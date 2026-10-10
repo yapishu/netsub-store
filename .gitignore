@@ -1,0 +1,12 @@
+.env
+/data/
+/bin/
+/tools/
+web/node_modules/
+web/dist/
+*.db
+*.db.lock
+.env.*
+!.env.example
+*.swp
+/cmd/store/store
