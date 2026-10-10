@@ -1,0 +1,25 @@
+{
+  "name": "netsub-store",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "test": "node --test test/*.test.mjs",
+    "test:browser": "node test/browser.mjs && node test/nock-browser.mjs && node test/admin-browser.mjs",
+    "format": "prettier --write src test vite.config.js index.html"
+  },
+  "dependencies": {
+    "@urbit/sigil-js": "2.2.0",
+    "@walletconnect/ethereum-provider": "^2.23.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "prettier": "^3.8.1",
+    "vite": "^7.1.0"
+  }
+}

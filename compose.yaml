@@ -1,0 +1,31 @@
+services:
+  store:
+    image: netsub-store:${IMAGE_TAG:-local}
+    build:
+      context: .
+    restart: unless-stopped
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "5"
+    init: true
+    env_file: ${STORE_ENV_FILE:-.env}
+    environment:
+      LISTEN: 0.0.0.0:8080
+      DB_PATH: /data/store.db
+      WEB_DIR: /app/web/dist
+    ports:
+      - "127.0.0.1:${PORT:-8080}:8080"
+    volumes:
+      - store-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 45s
+    mem_limit: 2g
+volumes:
+  store-data:
