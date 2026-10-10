@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -67,7 +68,21 @@ func FromEnv() (Config, error) {
 	if !address(c.AdminWallet) {
 		return c, errors.New("ADMIN_WALLET_ADDRESS must be a nonzero EVM wallet address")
 	}
-	c.Chains = map[int]Chain{1: {ID: 1, Name: "Ethereum", USDC: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", RPC: os.Getenv("ETH_RPC_URL"), ScanKey: os.Getenv("ETHERSCAN_API_KEY"), Confirmations: 32}, 8453: {ID: 8453, Name: "Base", USDC: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", RPC: os.Getenv("BASE_RPC_URL"), ScanKey: os.Getenv("ETHERSCAN_API_KEY"), Confirmations: 1800}}
+	confirmations := make(map[int]uint64)
+	for _, setting := range []struct {
+		id             int
+		name, fallback string
+	}{
+		{1, "ETH_CONFIRMATIONS", "3"},
+		{8453, "BASE_CONFIRMATIONS", "12"},
+	} {
+		count, err := strconv.ParseUint(env(setting.name, setting.fallback), 10, 64)
+		if err != nil || count < 1 || count > 100000 {
+			return c, fmt.Errorf("%s must be between 1 and 100000", setting.name)
+		}
+		confirmations[setting.id] = count
+	}
+	c.Chains = map[int]Chain{1: {ID: 1, Name: "Ethereum", USDC: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", RPC: os.Getenv("ETH_RPC_URL"), ScanKey: os.Getenv("ETHERSCAN_API_KEY"), Confirmations: confirmations[1]}, 8453: {ID: 8453, Name: "Base", USDC: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", RPC: os.Getenv("BASE_RPC_URL"), ScanKey: os.Getenv("ETHERSCAN_API_KEY"), Confirmations: confirmations[8453]}}
 	if c.Demo {
 		c.Star = "~marzod"
 		return c, nil
