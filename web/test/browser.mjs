@@ -1,6 +1,8 @@
 // Run against scripts/preview.sh. This test only uses preview inventory.
 import { chromium } from "playwright-core";
 import assert from "node:assert/strict";
+import { privateKeyToAccount } from "viem/accounts";
+const previewAdmin = privateKeyToAccount("0x" + "1".repeat(64));
 import { mkdir } from "node:fs/promises";
 const captures = new URL("../../.impeccable/review/", import.meta.url).pathname;
 await mkdir(captures, { recursive: true });
@@ -122,10 +124,29 @@ try {
       fullPage: true,
     });
   }
+  await page.exposeFunction("signPreviewAdmin", (message) =>
+    previewAdmin.signMessage({ message: { raw: message } }),
+  );
+  await page.addInitScript((address) => {
+    window.ethereum = {
+      request: async ({ method, params }) => {
+        if (method === "eth_requestAccounts") return [address];
+        if (method === "personal_sign")
+          return window.signPreviewAdmin(params[0]);
+        throw Error(method);
+      },
+      on() {},
+      removeListener() {},
+    };
+  }, previewAdmin.address);
   await page.goto(`${base}/admin`);
   await page.screenshot({ path: captures + "admin-login.png", fullPage: true });
-  await page.getByLabel("Admin password").fill("preview-password-only");
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Sign in with wallet", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Browser wallet", exact: true })
+    .click();
   await page.getByRole("heading", { name: "Store settings" }).waitFor();
   const adminData = await page.evaluate(() =>
     fetch("/api/admin").then((r) => r.json()),
@@ -137,7 +158,7 @@ try {
   await page
     .getByLabel("Payment recipient")
     .fill("0x2222222222222222222222222222222222222222");
-  await page.getByLabel("Premium · USDC", { exact: true }).fill("30");
+  await page.getByLabel("Premium · USD", { exact: true }).fill("30");
   await page
     .getByRole("button", { name: "Save settings", exact: true })
     .click();
@@ -150,7 +171,9 @@ try {
   await page
     .getByRole("button", { name: "Admin · sign out", exact: true })
     .click();
-  await page.getByLabel("Admin password").waitFor();
+  await page
+    .getByRole("button", { name: "Sign in with wallet", exact: true })
+    .waitFor();
   await page.goto(base);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: /sampel-palnet/ }).waitFor();

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -96,12 +95,7 @@ func bitcoinTestServer(t *testing.T) (*Server, *bitcoinFixture) {
 	}))
 	t.Cleanup(rpc.Close)
 	cfg := BitcoinConfig{RPC: rpc.URL, User: "test-user", Password: "test-password", Wallet: "netsub-test", Network: "regtest", Confirmations: 6}
-	client := &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
-		if r.URL.Host == "api.coinbase.com" {
-			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"data":{"amount":"100000","currency":"USD","base":"BTC"}}`))}, nil
-		}
-		return http.DefaultTransport.RoundTrip(r)
-	})}
+	client := &http.Client{Timeout: 15 * time.Second}
 	s.cfg.Bitcoin = cfg
 	s.bitcoin = &Bitcoin{cfg: cfg, http: client}
 	return s, f
@@ -264,7 +258,7 @@ func TestBitcoinCoreRegtest(t *testing.T) {
 	s := testServer(t)
 	cfg := BitcoinConfig{RPC: endpoint, User: "netsub-test", Password: "regtest-only", Wallet: "netsub-store", Network: "regtest", Confirmations: 2}
 	s.cfg.Bitcoin = cfg
-	s.bitcoin = &Bitcoin{cfg: cfg, http: &http.Client{Timeout: 15 * time.Second}, rate: "100000", rateAt: time.Now()}
+	s.bitcoin = &Bitcoin{cfg: cfg, http: &http.Client{Timeout: 15 * time.Second}}
 	o := createBitcoin(t, s)
 	minerCfg := cfg
 	minerCfg.Wallet = "miner"

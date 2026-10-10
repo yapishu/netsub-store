@@ -341,9 +341,7 @@ func TestUniqueTierMigrationPreservesExistingOrders(t *testing.T) {
 		cfg := settings(tx)
 		cfg.PremiumStrategies = append(cfg.PremiumStrategies, "sigils")
 		cfg.UniqueStrategies = nil
-		cfg.Prices.UniqueETH = ""
 		cfg.Prices.UniqueUSDC = ""
-		cfg.Prices.PremiumSigilETH = ""
 		cfg.Prices.PremiumSigilUSDC = ""
 		data, _ := json.Marshal(cfg)
 		tx.Bucket([]byte("settings")).Put([]byte("store"), data)
@@ -378,14 +376,13 @@ func TestNameAndSigilPricesAcrossCurrencies(t *testing.T) {
 			tags []string
 			tier string
 			usd  int64
-			eth  string
 			both bool
 		}{
-			{"sigil", []string{"sigils"}, "unique", 25, "7500000000000000", false},
-			{"name", []string{"only_english"}, "premium", 30, "9000000000000000", false},
-			{"name-and-sigil", []string{"only_english", "sigils"}, "premium", 35, "10500000000000000", true},
-			{"rare", []string{"any_english"}, "rare", 15, "4500000000000000", false},
-			{"rare-and-sigil", []string{"any_english", "sigils"}, "unique", 25, "7500000000000000", false},
+			{"sigil", []string{"sigils"}, "unique", 25, false},
+			{"name", []string{"only_english"}, "premium", 30, false},
+			{"name-and-sigil", []string{"only_english", "sigils"}, "premium", 35, true},
+			{"rare", []string{"any_english"}, "rare", 15, false},
+			{"rare-and-sigil", []string{"any_english", "sigils"}, "unique", 25, false},
 		} {
 			t.Run(asset+"/"+shape.name, func(t *testing.T) {
 				var s *Server
@@ -414,7 +411,7 @@ func TestNameAndSigilPricesAcrossCurrencies(t *testing.T) {
 				want := fmt.Sprint(shape.usd * 1_000_000)
 				switch asset {
 				case "ETH":
-					want = shape.eth
+					want = fmt.Sprint(shape.usd * 400_000_000_000_000)
 				case "BTC":
 					want = fmt.Sprint(shape.usd * 1000)
 				case "XMR":

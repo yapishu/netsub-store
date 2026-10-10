@@ -51,9 +51,9 @@ func TestProxyMnemonicMatchesPerigee(t *testing.T) {
 func TestMnemonicEnvironment(t *testing.T) {
 	for k, v := range map[string]string{
 		"DEMO": "false", "PUBLIC_ORIGIN": "https://store.example", "STAR": "~marzod",
-		"DATA_ENCRYPTION_KEY": strings.Repeat("1", 64),
-		"ADMIN_PASSWORD_HASH": "$2a$12$.....................................................",
-		"SPAWN_PRIVATE_KEY":   "", "SPAWN_MNEMONIC": testMnemonic, "SPAWN_MNEMONIC_PASSPHRASE": "",
+		"DATA_ENCRYPTION_KEY":  strings.Repeat("1", 64),
+		"ADMIN_WALLET_ADDRESS": buyer,
+		"SPAWN_PRIVATE_KEY":    "", "SPAWN_MNEMONIC": testMnemonic, "SPAWN_MNEMONIC_PASSPHRASE": "",
 		"SENDGRID_API_KEY": "test-key", "EMAIL_FROM": "store@example.com",
 		"ETH_RPC_URL": "https://eth.example", "BASE_RPC_URL": "https://base.example",
 	} {
@@ -74,7 +74,7 @@ func TestMnemonicEnvironment(t *testing.T) {
 }
 
 func TestWalletOnlyAdminConfiguration(t *testing.T) {
-	for k, v := range map[string]string{"DEMO": "true", "PUBLIC_ORIGIN": "https://store.example", "DATA_ENCRYPTION_KEY": strings.Repeat("1", 64), "ADMIN_PASSWORD_HASH": "", "ADMIN_WALLET_ADDRESS": "0x1111111111111111111111111111111111111111"} {
+	for k, v := range map[string]string{"DEMO": "true", "PUBLIC_ORIGIN": "https://store.example", "DATA_ENCRYPTION_KEY": strings.Repeat("1", 64), "ADMIN_WALLET_ADDRESS": "0x1111111111111111111111111111111111111111"} {
 		t.Setenv(k, v)
 	}
 	cfg, err := FromEnv()

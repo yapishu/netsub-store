@@ -25,6 +25,7 @@ import (
 )
 
 type Server struct {
+	rates       *MarketRates
 	nock        *Nock
 	monero      *Monero
 	bitcoin     *Bitcoin
@@ -45,12 +46,13 @@ func New(c Config) (*Server, error) {
 		return nil, e
 	}
 	s := &Server{cfg: c, db: db, auth: newAuth(), roller: roller.Client, http: &http.Client{Timeout: 25 * time.Second}}
+	s.rates = &MarketRates{http: s.http, key: c.CoinGeckoKey}
 	s.chain = &ChainReader{HTTP: s.http}
 	if c.Bitcoin.RPC != "" {
 		s.bitcoin = &Bitcoin{cfg: c.Bitcoin, http: s.http}
 	}
 	if c.Monero.WalletRPC != "" {
-		s.monero = newMonero(c.Monero, s.http)
+		s.monero = newMonero(c.Monero)
 	}
 	if c.Nock.BaseEnabled || c.Nock.Zpub != "" {
 		s.nock, e = newNock(c.Nock)
@@ -136,6 +138,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/orders/{id}/planet-code", s.protect(false, s.planetCode))
 	mux.HandleFunc("GET /api/admin/events", s.protect(true, s.events))
 	mux.HandleFunc("POST /api/admin/orders/{id}/receipt", s.protect(true, s.retryReceipt))
+	mux.HandleFunc("GET /api/admin/payment-ledger", s.protect(true, s.paymentLedger))
+	mux.HandleFunc("GET /api/admin/email-preview", s.protect(true, s.emailPreview))
+	mux.HandleFunc("POST /api/admin/test-email", s.protect(true, s.testEmail))
 	mux.HandleFunc("GET /api/admin", s.protect(true, s.admin))
 	mux.HandleFunc("PUT /api/admin/settings", s.protect(true, s.saveSettings))
 	mux.HandleFunc("POST /api/admin/inventory", s.protect(true, func(w http.ResponseWriter, r *http.Request) {
@@ -237,7 +242,7 @@ func (s *Server) publicConfig(w http.ResponseWriter, r *http.Request) {
 	var cfg Settings
 	_ = s.db.View(func(tx *bolt.Tx) error { cfg = settings(tx); return nil })
 	chains := []Chain{s.cfg.Chains[1], s.cfg.Chains[8453]}
-	respond(w, map[string]any{"adminLogin": map[string]bool{"wallet": s.cfg.AdminWallet != "", "password": s.cfg.AdminHash != ""}, "star": s.cfg.Star, "demo": s.cfg.Demo, "open": cfg.Open && !s.cfg.Demo, "prices": cfg.Prices, "chains": chains, "walletConnectId": s.cfg.WalletConnectID, "randomUsdc": "5", "nockchain": map[string]any{"enabled": s.nock != nil && s.cfg.Nock.Zpub != "", "confirmations": s.cfg.Nock.Confirmations}, "baseNock": map[string]any{"enabled": s.nock != nil && s.cfg.Nock.BaseEnabled, "contract": baseNockToken, "decimals": 16}, "monero": map[string]any{"enabled": s.monero != nil, "network": s.cfg.Monero.Network, "confirmations": s.cfg.Monero.Confirmations}, "bitcoin": map[string]any{"enabled": s.bitcoin != nil, "network": s.cfg.Bitcoin.Network, "confirmations": s.cfg.Bitcoin.Confirmations}})
+	respond(w, map[string]any{"adminLogin": map[string]bool{"wallet": s.cfg.AdminWallet != ""}, "star": s.cfg.Star, "demo": s.cfg.Demo, "open": cfg.Open && !s.cfg.Demo, "prices": cfg.Prices, "chains": chains, "walletConnectId": s.cfg.WalletConnectID, "randomUsdc": "5", "nockchain": map[string]any{"enabled": s.nock != nil && s.cfg.Nock.Zpub != "", "confirmations": s.cfg.Nock.Confirmations}, "baseNock": map[string]any{"enabled": s.nock != nil && s.cfg.Nock.BaseEnabled, "contract": baseNockToken, "decimals": 16}, "monero": map[string]any{"enabled": s.monero != nil, "network": s.cfg.Monero.Network, "confirmations": s.cfg.Monero.Confirmations}, "bitcoin": map[string]any{"enabled": s.bitcoin != nil, "network": s.cfg.Bitcoin.Network, "confirmations": s.cfg.Bitcoin.Confirmations}})
 }
 func (s *Server) planets(w http.ResponseWriter, r *http.Request) {
 	var planets []Planet
@@ -336,12 +341,19 @@ func (s *Server) createOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var rate string
+	if in.Asset == "ETH" {
+		rate, e = s.rates.usdRate(checkCtx, "ETH")
+		if e != nil {
+			fail(w, 503, "Cannot quote an ETH price; try again later")
+			return
+		}
+	}
 	if in.Asset == "BTC" {
 		if err := s.bitcoin.ready(checkCtx); err != nil {
 			fail(w, 503, "Bitcoin node is unavailable or synchronizing")
 			return
 		}
-		rate, e = s.bitcoin.usdRate(checkCtx)
+		rate, e = s.rates.usdRate(checkCtx, "BTC")
 		if e != nil {
 			fail(w, 503, "Cannot quote a Bitcoin price; try again later")
 			return
@@ -352,7 +364,7 @@ func (s *Server) createOrder(w http.ResponseWriter, r *http.Request) {
 			fail(w, 503, "Monero wallet or node is unavailable or synchronizing")
 			return
 		}
-		rate, e = s.monero.usdRate(checkCtx)
+		rate, e = s.rates.usdRate(checkCtx, "XMR")
 		if e != nil {
 			fail(w, 503, "Cannot quote a Monero price; try again later")
 			return
@@ -419,43 +431,21 @@ func (s *Server) createOrder(w http.ResponseWriter, r *http.Request) {
 		if chosen == nil {
 			return errors.New("Planet is no longer available")
 		}
-		p := cfg.Prices.ETH
-		d := 18
-		if in.Asset != "ETH" {
-			p = cfg.Prices.USDC
-			d = 6
-		}
-		if chosen.Tier == "rare" {
-			if in.Asset != "ETH" {
-				p = cfg.Prices.RareUSDC
-			} else {
-				p = cfg.Prices.RareETH
-			}
-		}
-		if chosen.Tier == "unique" {
-			if in.Asset != "ETH" {
-				p = cfg.Prices.UniqueUSDC
-			} else {
-				p = cfg.Prices.UniqueETH
-			}
-		}
-		if chosen.Tier == "premium" {
-			if in.Asset != "ETH" {
-				p = cfg.Prices.PremiumUSDC
-			} else {
-				p = cfg.Prices.PremiumETH
-			}
+		p := cfg.Prices.USDC
+		d := 6
+		switch chosen.Tier {
+		case "rare":
+			p = cfg.Prices.RareUSDC
+		case "unique":
+			p = cfg.Prices.UniqueUSDC
+		case "premium":
+			p = cfg.Prices.PremiumUSDC
 		}
 		if chosen.NameAndSigil {
-			if in.Asset != "ETH" {
-				p = cfg.Prices.PremiumSigilUSDC
-			} else {
-				p = cfg.Prices.PremiumSigilETH
-			}
+			p = cfg.Prices.PremiumSigilUSDC
 		}
 		if in.Random {
 			p = "5"
-			d = 6
 		}
 		amount, e := units(p, d)
 		if e != nil {
@@ -463,6 +453,13 @@ func (s *Server) createOrder(w http.ResponseWriter, r *http.Request) {
 		}
 		now := time.Now().UTC()
 		order = Order{ID: token(), Wallet: v.Wallet, Email: in.Email, Planet: chosen.Name, Tier: chosen.Tier, NameAndSigil: chosen.NameAndSigil, Random: in.Random, ChainID: in.ChainID, Asset: in.Asset, Amount: amount.String(), Recipient: cfg.Recipient, Created: now, Expires: now.Add(20 * time.Minute), Status: "awaiting_payment"}
+		if in.Asset == "ETH" {
+			quote, err := coinQuote(p, rate, 18)
+			if err != nil {
+				return err
+			}
+			order.Amount, order.ETHRate = quote, rate
+		}
 		if in.Asset == "BTC" {
 			quote, err := bitcoinQuote(p, rate)
 			if err != nil {
@@ -671,7 +668,7 @@ func (s *Server) admin(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "Cannot read name categories")
 		return
 	}
-	respond(w, map[string]any{"categories": counts, "pendingSpawns": pendingSpawns, "receiptEmail": s.cfg.ReceiptTo, "settings": cfg, "orders": orders, "available": count, "inventoryUpdated": updated, "demo": s.cfg.Demo, "sendgridConfigured": s.cfg.SendGridKey != "", "rarityConfigured": s.cfg.GonetiaDir != ""})
+	respond(w, map[string]any{"categories": counts, "pendingSpawns": pendingSpawns, "receiptEmail": s.cfg.ReceiptTo, "emailFrom": s.cfg.EmailFrom, "settings": cfg, "orders": orders, "available": count, "inventoryUpdated": updated, "demo": s.cfg.Demo, "sendgridConfigured": s.cfg.SendGridKey != "", "rarityConfigured": s.cfg.GonetiaDir != ""})
 }
 func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {
 	var cfg Settings

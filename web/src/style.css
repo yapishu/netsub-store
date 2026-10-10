@@ -626,6 +626,7 @@ dialog.modal {
 }
 table {
   width: 100%;
+  min-width: 760px;
   border-collapse: collapse;
   font-size: 12px;
   text-align: left;
@@ -893,4 +894,32 @@ urbit-sigil {
 
 .admin-wallet-login {
   margin-bottom: 24px;
+}
+
+.email-test {
+  margin-block: 24px;
+}
+.email-test-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+}
+.email-test details {
+  margin-block: 16px;
+}
+.email-preview {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  line-height: 1.6;
+  max-width: 72ch;
+}
+.payment-destination {
+  overflow-wrap: anywhere;
+  max-width: 38ch;
+}
+@media (max-width: 720px) {
+  .email-test-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

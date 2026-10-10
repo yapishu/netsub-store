@@ -15,7 +15,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -65,12 +64,9 @@ func bitcoinParams(network string) *chaincfg.Params {
 }
 
 type Bitcoin struct {
-	cfg    BitcoinConfig
-	http   *http.Client
-	id     atomic.Uint64
-	rateMu sync.Mutex
-	rate   string
-	rateAt time.Time
+	cfg  BitcoinConfig
+	http *http.Client
+	id   atomic.Uint64
 }
 type bitcoinRPCError struct {
 	Code int `json:"code"`
@@ -174,37 +170,6 @@ func (b *Bitcoin) address(ctx context.Context, id string) (string, error) {
 		return "", errors.New("Bitcoin node returned an address for the wrong network")
 	}
 	return address, nil
-}
-func (b *Bitcoin) usdRate(ctx context.Context) (string, error) {
-	b.rateMu.Lock()
-	defer b.rateMu.Unlock()
-	if b.rate != "" && time.Since(b.rateAt) < time.Minute {
-		return b.rate, nil
-	}
-	req, err := http.NewRequestWithContext(ctx, "GET", "https://api.coinbase.com/v2/prices/BTC-USD/spot", nil)
-	if err != nil {
-		return "", err
-	}
-	resp, err := b.http.Do(req)
-	if err != nil {
-		return "", errors.New("Bitcoin exchange rate unavailable")
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return "", errors.New("Bitcoin exchange rate unavailable")
-	}
-	var price struct {
-		Data struct{ Amount, Base, Currency string }
-	}
-	if err = json.NewDecoder(io.LimitReader(resp.Body, 8192)).Decode(&price); err != nil {
-		return "", errors.New("Invalid Bitcoin exchange rate")
-	}
-	value, ok := new(big.Rat).SetString(price.Data.Amount)
-	if !ok || value.Sign() <= 0 || price.Data.Currency != "USD" || price.Data.Base != "BTC" {
-		return "", errors.New("Invalid Bitcoin exchange rate")
-	}
-	b.rate, b.rateAt = price.Data.Amount, time.Now()
-	return b.rate, nil
 }
 func bitcoinQuote(usd, rate string) (string, error) {
 	dollars, err := units(usd, 6)

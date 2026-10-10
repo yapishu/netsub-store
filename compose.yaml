@@ -16,7 +16,7 @@ services:
       DB_PATH: /data/store.db
       WEB_DIR: /app/web/dist
     ports:
-      - "127.0.0.1:${PORT:-8080}:8080"
+      - "0.0.0.0:${PORT:-8080}:8080"
     volumes:
       - store-data:/data
     read_only: true

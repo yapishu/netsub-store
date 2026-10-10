@@ -128,14 +128,8 @@ func moneroTestServer(t *testing.T) (*Server, *moneroFixture) {
 	}))
 	t.Cleanup(rpc.Close)
 	cfg := MoneroConfig{WalletRPC: rpc.URL, WalletUser: "test-user", WalletPassword: "test-password", DaemonRPC: rpc.URL, DaemonUser: "test-user", DaemonPassword: "test-password", Network: "stagenet", Confirmations: 10}
-	prices := &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
-		if r.URL.String() != "https://api.kraken.com/0/public/Ticker?pair=XMRUSD" {
-			t.Error("unexpected price request")
-		}
-		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"error":[],"result":{"XXMRZUSD":{"c":["200","1"]}}}`))}, nil
-	})}
 	s.cfg.Monero = cfg
-	s.monero = newMonero(cfg, prices)
+	s.monero = newMonero(cfg)
 	return s, f
 }
 func createMonero(t *testing.T, s *Server) Order {
@@ -321,7 +315,7 @@ func TestMoneroWalletRPC(t *testing.T) {
 	daemonURL := os.Getenv("MONERO_TEST_DAEMON_RPC_URL")
 	senderURL := os.Getenv("MONERO_TEST_SENDER_RPC_URL")
 	cfg := MoneroConfig{WalletRPC: walletURL, WalletUser: "netsub-test", WalletPassword: "regtest-only", DaemonRPC: daemonURL, Network: "mainnet", Confirmations: 10}
-	raw := newMonero(cfg, &http.Client{Timeout: 30 * time.Second})
+	raw := newMonero(cfg)
 	var info map[string]any
 	if err := raw.call(context.Background(), true, "get_info", map[string]any{}, &info); err != nil {
 		t.Fatal(err)
@@ -364,9 +358,7 @@ func TestMoneroWalletRPC(t *testing.T) {
 	s := testServer(t)
 	cfg.DaemonRPC = proxy.URL
 	s.cfg.Monero = cfg
-	s.monero = newMonero(cfg, s.http)
-	s.monero.rate = "200"
-	s.monero.rateAt = time.Now()
+	s.monero = newMonero(cfg)
 	var empty map[string]any
 	if err := s.monero.call(context.Background(), false, "refresh", map[string]any{}, &empty); err != nil {
 		t.Fatal(err)
@@ -377,7 +369,7 @@ func TestMoneroWalletRPC(t *testing.T) {
 	}
 	senderCfg := cfg
 	senderCfg.WalletRPC = senderURL
-	sender := newMonero(senderCfg, s.http)
+	sender := newMonero(senderCfg)
 	var sent struct {
 		Hash string `json:"tx_hash"`
 	}

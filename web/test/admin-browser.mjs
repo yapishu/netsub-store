@@ -15,7 +15,7 @@ try {
     const config = await (await page.request.get(base + "/api/config")).json();
     await page.route("**/api/config", (r) =>
       r.fulfill({
-        json: { ...config, adminLogin: { wallet: true, password: false } },
+        json: { ...config, adminLogin: { wallet: true } },
       }),
     );
     await page.route("**/api/auth/session", (r) =>
@@ -53,16 +53,62 @@ try {
             uniqueStrategies: [],
             premiumStrategies: [],
           },
-          orders: [],
+          orders: [
+            {
+              id: "old-empty",
+              planet: "~old-empty",
+              wallet: admin,
+              email: "test@example.com",
+              asset: "USDC",
+              amount: "10000000",
+              status: "expired",
+              created: new Date(Date.now() - 3 * 3600000).toISOString(),
+              recipient: admin,
+            },
+            {
+              id: "paid-order",
+              planet: "~paid-order",
+              wallet: admin,
+              email: "test@example.com",
+              asset: "USDC",
+              amount: "10000000",
+              status: "delivered",
+              paidAt: new Date().toISOString(),
+              created: new Date(Date.now() - 3 * 3600000).toISOString(),
+              recipient: admin,
+            },
+          ],
           categories: [],
           available: 6,
-          sendgridConfigured: false,
+          sendgridConfigured: true,
+          demo: false,
           receiptEmail: "store@example.com",
+          emailFrom: "sender@example.com",
           rarityConfigured: true,
           pendingSpawns: 0,
         },
       }),
     );
+    await page.route("**/api/admin/email-preview", (r) =>
+      r.fulfill({
+        json: {
+          delivery: {
+            subject: "[TEST] Planet code",
+            text: "SAMPLE-CODE-NOT-REDEEMABLE",
+          },
+          receipt: { subject: "[TEST] Receipt", text: "TEST — no purchase" },
+        },
+      }),
+    );
+    await page.route("**/api/admin/test-email", (r) => {
+      assert.deepEqual(r.request().postDataJSON(), {
+        email: "store@example.com",
+        kind: "delivery",
+      });
+      return r.fulfill({
+        json: { message: "SendGrid accepted the test email." },
+      });
+    });
     await page.addInitScript((admin) => {
       window.ethereum = {
         request: async ({ method }) => {
@@ -92,6 +138,31 @@ try {
     await page
       .getByRole("heading", { name: "Store settings", exact: true })
       .waitFor();
+    await page.getByText("~paid-order", { exact: true }).waitFor();
+    assert.equal(
+      await page.getByText("~old-empty", { exact: true }).count(),
+      0,
+    );
+    await page.getByLabel(/Show older unpaid orders/).check();
+    await page.getByText("~old-empty", { exact: true }).waitFor();
+    await page.getByLabel(/Show older unpaid orders/).uncheck();
+    await page
+      .getByText("Preview: [TEST] Planet code", { exact: true })
+      .click();
+    await page
+      .getByText("SAMPLE-CODE-NOT-REDEEMABLE", { exact: true })
+      .waitFor();
+    await page
+      .getByRole("button", { name: "Send test email", exact: true })
+      .click();
+    await page
+      .getByRole("status")
+      .filter({ hasText: "SendGrid accepted" })
+      .waitFor();
+    await page.screenshot({
+      path: `../.impeccable/review/admin-settings-${width}.png`,
+      fullPage: true,
+    });
     assert.equal(
       await page.getByLabel("Payment recipient").inputValue(),
       admin,

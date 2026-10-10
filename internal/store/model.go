@@ -21,17 +21,16 @@ import (
 	"github.com/Native-Planet/perigee/types"
 	"github.com/ethereum/go-ethereum/common"
 	bolt "go.etcd.io/bbolt"
-	"golang.org/x/crypto/bcrypt"
 )
 
 type Config struct {
-	Nock                                                                                                                                   NockConfig
-	Monero                                                                                                                                 MoneroConfig
-	Bitcoin                                                                                                                                BitcoinConfig
-	Listen, Origin, DBPath, WebDir, Star, SpawnKey, AdminHash, AdminWallet, SendGridKey, EmailFrom, WalletConnectID, GonetiaDir, ReceiptTo string
-	EncryptionKey                                                                                                                          []byte
-	Chains                                                                                                                                 map[int]Chain
-	Demo                                                                                                                                   bool
+	Nock                                                                                                                                      NockConfig
+	Monero                                                                                                                                    MoneroConfig
+	Bitcoin                                                                                                                                   BitcoinConfig
+	Listen, Origin, DBPath, WebDir, Star, SpawnKey, CoinGeckoKey, AdminWallet, SendGridKey, EmailFrom, WalletConnectID, GonetiaDir, ReceiptTo string
+	EncryptionKey                                                                                                                             []byte
+	Chains                                                                                                                                    map[int]Chain
+	Demo                                                                                                                                      bool
 }
 type Chain struct {
 	ID            int    `json:"id"`
@@ -43,7 +42,7 @@ type Chain struct {
 }
 
 func FromEnv() (Config, error) {
-	c := Config{Listen: env("LISTEN", "127.0.0.1:8080"), Origin: env("PUBLIC_ORIGIN", "http://localhost:8080"), DBPath: env("DB_PATH", "data/store.db"), WebDir: env("WEB_DIR", "web/dist"), Star: os.Getenv("STAR"), SpawnKey: strings.TrimPrefix(os.Getenv("SPAWN_PRIVATE_KEY"), "0x"), AdminHash: os.Getenv("ADMIN_PASSWORD_HASH"), AdminWallet: strings.TrimSpace(os.Getenv("ADMIN_WALLET_ADDRESS")), SendGridKey: os.Getenv("SENDGRID_API_KEY"), EmailFrom: os.Getenv("EMAIL_FROM"), WalletConnectID: os.Getenv("WALLETCONNECT_PROJECT_ID"), GonetiaDir: os.Getenv("GONETIA_DIR"), ReceiptTo: env("RECEIPT_EMAIL", "matwet@subject.network"), Demo: os.Getenv("DEMO") == "true"}
+	c := Config{Listen: env("LISTEN", "127.0.0.1:8080"), Origin: env("PUBLIC_ORIGIN", "http://localhost:8080"), DBPath: env("DB_PATH", "data/store.db"), WebDir: env("WEB_DIR", "web/dist"), Star: os.Getenv("STAR"), SpawnKey: strings.TrimPrefix(os.Getenv("SPAWN_PRIVATE_KEY"), "0x"), CoinGeckoKey: os.Getenv("COINGECKO_DEMO_API_KEY"), AdminWallet: strings.TrimSpace(os.Getenv("ADMIN_WALLET_ADDRESS")), SendGridKey: os.Getenv("SENDGRID_API_KEY"), EmailFrom: os.Getenv("EMAIL_FROM"), WalletConnectID: os.Getenv("WALLETCONNECT_PROJECT_ID"), GonetiaDir: os.Getenv("GONETIA_DIR"), ReceiptTo: env("RECEIPT_EMAIL", "matwet@subject.network"), Demo: os.Getenv("DEMO") == "true"}
 	var err error
 	c.Bitcoin, err = bitcoinFromEnv()
 	if err != nil {
@@ -65,17 +64,8 @@ func FromEnv() (Config, error) {
 	if err != nil || u.Host == "" || (u.Scheme != "https" && !(u.Scheme == "http" && (u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1"))) || u.Path != "" {
 		return c, errors.New("PUBLIC_ORIGIN must be an HTTPS origin (HTTP allowed on localhost)")
 	}
-	if c.AdminWallet != "" && !address(c.AdminWallet) {
+	if !address(c.AdminWallet) {
 		return c, errors.New("ADMIN_WALLET_ADDRESS must be a nonzero EVM wallet address")
-	}
-	if c.AdminHash != "" {
-		cost, hashErr := bcrypt.Cost([]byte(c.AdminHash))
-		if hashErr != nil || cost < 10 {
-			return c, errors.New("ADMIN_PASSWORD_HASH must be a valid bcrypt hash; use store hash-password")
-		}
-	}
-	if c.AdminWallet == "" && c.AdminHash == "" {
-		return c, errors.New("configure ADMIN_WALLET_ADDRESS or ADMIN_PASSWORD_HASH")
 	}
 	c.Chains = map[int]Chain{1: {ID: 1, Name: "Ethereum", USDC: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", RPC: os.Getenv("ETH_RPC_URL"), ScanKey: os.Getenv("ETHERSCAN_API_KEY"), Confirmations: 32}, 8453: {ID: 8453, Name: "Base", USDC: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", RPC: os.Getenv("BASE_RPC_URL"), ScanKey: os.Getenv("ETHERSCAN_API_KEY"), Confirmations: 1800}}
 	if c.Demo {
@@ -121,15 +111,10 @@ func address(s string) bool {
 }
 
 type Prices struct {
-	PremiumSigilETH  string `json:"premiumSigilEth"`
 	PremiumSigilUSDC string `json:"premiumSigilUsdc"`
-	UniqueETH        string `json:"uniqueEth"`
 	UniqueUSDC       string `json:"uniqueUsdc"`
-	ETH              string `json:"eth"`
 	USDC             string `json:"usdc"`
-	RareETH          string `json:"rareEth"`
 	RareUSDC         string `json:"rareUsdc"`
-	PremiumETH       string `json:"premiumEth"`
 	PremiumUSDC      string `json:"premiumUsdc"`
 }
 type Settings struct {
@@ -147,6 +132,7 @@ type Planet struct {
 	Tier         string   `json:"tier"`
 }
 type Order struct {
+	ETHRate             string               `json:"ethRate,omitempty"`
 	NockRate            string               `json:"nockRate,omitempty"`
 	NockRequired        int                  `json:"nockRequired,omitempty"`
 	NockConfirmations   int                  `json:"nockConfirmations,omitempty"`
@@ -282,7 +268,7 @@ func allOrders(tx *bolt.Tx) ([]Order, error) {
 	return out, err
 }
 func settings(tx *bolt.Tx) Settings {
-	s := Settings{Prices: Prices{ETH: "0.003", USDC: "10", RareETH: "0.0045", RareUSDC: "15", PremiumETH: "0.009", PremiumUSDC: "30", UniqueETH: "0.0075", UniqueUSDC: "25", PremiumSigilETH: "0.0105", PremiumSigilUSDC: "35"}, RareStrategies: []string{"any_english", "any_approx", "alliteration"}, PremiumStrategies: []string{"only_english", "doubles", "only_approx"}, UniqueStrategies: []string{"sigils"}}
+	s := Settings{Prices: Prices{USDC: "10", RareUSDC: "15", PremiumUSDC: "30", UniqueUSDC: "25", PremiumSigilUSDC: "35"}, RareStrategies: []string{"any_english", "any_approx", "alliteration"}, PremiumStrategies: []string{"only_english", "doubles", "only_approx"}, UniqueStrategies: []string{"sigils"}}
 	b := tx.Bucket([]byte("settings")).Get([]byte("store"))
 	if b != nil {
 		_ = json.Unmarshal(b, &s)
@@ -296,7 +282,7 @@ func validSettings(s Settings) error {
 	for _, p := range []struct {
 		v string
 		d int
-	}{{s.Prices.ETH, 18}, {s.Prices.USDC, 6}, {s.Prices.RareETH, 18}, {s.Prices.RareUSDC, 6}, {s.Prices.PremiumETH, 18}, {s.Prices.PremiumUSDC, 6}, {s.Prices.UniqueETH, 18}, {s.Prices.UniqueUSDC, 6}, {s.Prices.PremiumSigilETH, 18}, {s.Prices.PremiumSigilUSDC, 6}} {
+	}{{s.Prices.USDC, 6}, {s.Prices.RareUSDC, 6}, {s.Prices.PremiumUSDC, 6}, {s.Prices.UniqueUSDC, 6}, {s.Prices.PremiumSigilUSDC, 6}} {
 		if _, e := units(p.v, p.d); e != nil {
 			return e
 		}

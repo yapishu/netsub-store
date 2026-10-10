@@ -23,7 +23,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	bolt "go.etcd.io/bbolt"
-	"golang.org/x/crypto/bcrypt"
 )
 
 const buyer = "0x1111111111111111111111111111111111111111"
@@ -32,8 +31,7 @@ const hash = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 
 func testServer(t *testing.T) *Server {
 	t.Helper()
-	pw, _ := bcrypt.GenerateFromPassword([]byte("test-admin-password"), bcrypt.MinCost)
-	c := Config{Demo: true, DBPath: filepath.Join(t.TempDir(), "store.db"), Star: "~marzod", Origin: "https://store.test", AdminHash: string(pw), EncryptionKey: bytes.Repeat([]byte{1}, 32), Chains: map[int]Chain{1: {ID: 1, USDC: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"}, 8453: {ID: 8453, USDC: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"}}}
+	c := Config{Demo: true, DBPath: filepath.Join(t.TempDir(), "store.db"), Star: "~marzod", Origin: "https://store.test", AdminWallet: buyer, EncryptionKey: bytes.Repeat([]byte{1}, 32), Chains: map[int]Chain{1: {ID: 1, USDC: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"}, 8453: {ID: 8453, USDC: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"}}}
 	s, e := New(c)
 	if e != nil {
 		t.Fatal(e)
@@ -57,6 +55,7 @@ func testServer(t *testing.T) *Server {
 	s.roller = roller.New(roller.Config{Endpoint: rpc.URL})
 	s.cfg.ReceiptTo = "matwet@subject.network"
 	s.cfg.Demo = false
+	s.rates = &MarketRates{rates: map[string]string{"BTC": "100000", "ETH": "2500", "XMR": "200"}, next: time.Now().Add(time.Hour)}
 	s.auth.sessions["buyer"] = session{Origin: c.Origin, Wallet: buyer, CSRF: "csrf", Expires: time.Now().Add(time.Hour)}
 	s.auth.sessions["other"] = session{Origin: c.Origin, Wallet: recipient, CSRF: "csrf", Expires: time.Now().Add(time.Hour)}
 	s.auth.sessions["admin"] = session{Origin: c.Origin, Admin: true, CSRF: "csrf", Expires: time.Now().Add(time.Hour)}
@@ -226,13 +225,9 @@ func TestCookieCSRFOriginAndLoginRateLimit(t *testing.T) {
 	if w.Code != 403 {
 		t.Fatal("missing CSRF accepted")
 	}
-	w = request(s, "POST", "/api/auth/login", `{"Password":"test-admin-password"}`, "")
-	if w.Code != 200 {
-		t.Fatal(w.Code, w.Body.String())
-	}
-	cookies := w.Result().Cookies()
-	if len(cookies) != 1 || !cookies[0].HttpOnly || !cookies[0].Secure || cookies[0].SameSite != http.SameSiteStrictMode {
-		t.Fatal("unsafe session cookie")
+	w = request(s, "POST", "/api/auth/login", `{"password":"anything"}`, "")
+	if w.Code < 400 || len(w.Result().Cookies()) != 0 {
+		t.Fatal("password grants access")
 	}
 	for i := 0; i < 12; i++ {
 		w = request(s, "POST", "/api/auth/login", `{"Password":"wrong"}`, "")
@@ -256,6 +251,10 @@ func TestWalletChallengeSingleUse(t *testing.T) {
 	w = request(s, "POST", "/api/auth/login", body, "")
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
+	}
+	cookies := w.Result().Cookies()
+	if len(cookies) != 1 || !cookies[0].HttpOnly || !cookies[0].Secure || cookies[0].SameSite != http.SameSiteStrictMode {
+		t.Fatal("unsafe session cookie")
 	}
 	if request(s, "POST", "/api/auth/login", body, "").Code != 401 {
 		t.Fatal("replayed signature accepted")

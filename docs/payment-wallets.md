@@ -136,3 +136,14 @@ docker compose up -d --wait
 An enabled currency appears in checkout. A reservation must obtain a receiving address and a current exchange-rate quote; an unavailable or synchronizing wallet blocks that currency's reservation. Keep the store and wallets running so payments are detected before the 20-minute quote expires. Confirmation and unlocking may finish afterward. Late or insufficient payments go to operator review.
 
 Both currencies use the store's Ethereum-wallet sign-in for order recovery and a delivery email. Payments come from the buyer's separate Bitcoin or Monero wallet. A full live purchase verifies the receiving wallet, payment detection, receipt email, and planet-code delivery together.
+
+## Find and recover payments
+
+Open `/admin` to see each order's receiving address and transaction ID. **Download payment destinations** exports all order destinations, including hidden unpaid orders. Keep this file and a consistent backup of the store database with your wallet backups. Addresses identify where funds are held; spending requires the corresponding wallet's keys.
+
+- **ETH, USDC, and $NOCK on Base:** each order stores the payment recipient selected at reservation time and its chain ID (`1` Ethereum, `8453` Base). Open the wallet controlling that address on the matching network. USDC and Base NOCK are tokens in that wallet. Changing the admin payment recipient does not move earlier payments. The admin login wallet and star spawn key do not automatically control this receiving address.
+- **Bitcoin:** the ledger records the order address, network, transaction IDs, and Core label `netsub-order:ORDER_ID`. Spend using the wallet whose receiving descriptor is imported into Core. A watch-only descriptor cannot spend; recover from that spending wallet's seed or backup. The configured `cormorant` wallet requires a receiving descriptor before it can allocate store addresses.
+- **Monero:** use the spending wallet under `~/.local/share/netsub-store-monero/backup/`, or restore its seed using the address and restore height in `recovery.json`. Keep that directory backed up offline. The ledger exports account and subaddress indices; scan enough subaddresses to include the highest issued index. The running view-only RPC wallet only detects incoming payments and cannot spend them.
+- **Native NOCK:** restore the private wallet matching the exported receiving zpub. Each order's ledger row includes its public receiving branch, non-hardened child index, address, lock root, and transaction IDs. Derive that child from the matching private branch to spend. The zpub alone cannot recover spending keys. Keep the original wallet seed/private-key backup and the path used to export the receiving branch.
+
+The store does not automatically sweep these payments into a single wallet. Planet-code recovery is separate from payment-fund recovery.

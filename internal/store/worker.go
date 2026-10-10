@@ -295,7 +295,7 @@ func (s *Server) email(ctx context.Context, o Order) {
 		s.LogError("email attempt save failed", err)
 		return
 	}
-	text := fmt.Sprintf("Your L2 planet %s\n\nPlanet code: %s\n\nRedeem on Bridge: %s\n\nPlease wait up to 1 hour for the batch to process and the planet code to become redeemable.\n\nBridge creates a fresh master ticket in your browser and transfers the planet to it. Keep your planet code private until redeemed; anyone with the code can claim the planet.\n\nYou can also sign in with your purchasing wallet at %s to reveal and download your planet code.\n", c.Planet, c.Code, c.URL, s.cfg.Origin)
+	text := deliveryText(c.Planet, c.Code, c.URL, s.cfg.Origin)
 	payload := map[string]any{"personalizations": []any{map[string]any{"to": []any{map[string]string{"email": o.Email}}}}, "from": map[string]string{"email": s.cfg.EmailFrom, "name": "Networked Subject"}, "subject": "Your planet code for " + c.Planet, "content": []any{map[string]string{"type": "text/plain", "value": text}}, "tracking_settings": map[string]any{"click_tracking": map[string]bool{"enable": false, "enable_text": false}, "open_tracking": map[string]bool{"enable": false}}}
 	if err := s.sendMail(ctx, payload); err == nil {
 		o.EmailSent = true
@@ -329,4 +329,8 @@ func (s *Server) sendMail(ctx context.Context, payload map[string]any) error {
 		return fmt.Errorf("Email delivery failed (HTTP %d)", resp.StatusCode)
 	}
 	return nil
+}
+
+func deliveryText(planet, code, url, origin string) string {
+	return fmt.Sprintf("Your L2 planet %s\n\nPlanet code: %s\n\nRedeem on Bridge: %s\n\nPlease wait up to 1 hour for the batch to process and the planet code to become redeemable.\n\nBridge creates a fresh master ticket in your browser and transfers the planet to it. Keep your planet code private until redeemed; anyone with the code can claim the planet.\n\nYou can also sign in with your purchasing wallet at %s to reveal and download your planet code.\n", planet, code, url, origin)
 }

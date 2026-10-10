@@ -13,7 +13,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/crypto"
-	"golang.org/x/crypto/bcrypt"
 )
 
 type session struct {
@@ -174,20 +173,8 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		fail(w, 429, "Too many attempts. Try again in 15 minutes.")
 		return
 	}
-	var in struct{ Password, Challenge, Signature string }
+	var in struct{ Challenge, Signature string }
 	if !readJSON(w, r, &in) {
-		return
-	}
-	if in.Password != "" {
-		if !s.auth.allow("admin-global", 60, 15*time.Minute) {
-			fail(w, 429, "Too many attempts")
-			return
-		}
-		if bcrypt.CompareHashAndPassword([]byte(s.cfg.AdminHash), []byte(in.Password)) != nil {
-			fail(w, 401, "Sign-in failed")
-			return
-		}
-		s.setSession(w, r, session{Admin: true})
 		return
 	}
 	s.auth.mu.Lock()

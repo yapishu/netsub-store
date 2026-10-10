@@ -50,35 +50,7 @@ func (s *Server) receipt(ctx context.Context, o Order) {
 		s.LogError("receipt attempt save failed", err)
 		return
 	}
-	chain := s.cfg.Chains[o.ChainID]
-	if o.Asset == "BTC" {
-		chain.Name = "Bitcoin (" + o.BitcoinNetwork + ")"
-	}
-	if o.Asset == "XMR" {
-		chain.Name = "Monero (" + o.MoneroNetwork + ")"
-	}
-	if o.Asset == "NOCK" {
-		chain.Name = "Nockchain"
-	}
-	transactions := o.TxHash
-	if len(o.BitcoinTxIDs) > 0 {
-		transactions = strings.Join(o.BitcoinTxIDs, ", ")
-	}
-	if len(o.MoneroTxIDs) > 0 {
-		transactions = strings.Join(o.MoneroTxIDs, ", ")
-	}
-	if len(o.NockTxIDs) > 0 {
-		transactions = strings.Join(o.NockTxIDs, ", ")
-	}
-	purchase := o.Tier
-	if o.NameAndSigil {
-		purchase = "premium name + sigil"
-	}
-	if o.Random {
-		purchase = "random standard"
-	}
-	text := fmt.Sprintf("Payment received\n\nOrder: %s\nPlanet: %s\nSelection: %s\nAmount: %s %s\nNetwork: %s\nTransaction: %s\nBuyer wallet: %s\nDelivery email: %s\nPaid at: %s\n\nThe planet code is delivered separately to the buyer. View the order at %s.\n",
-		o.ID, o.Planet, purchase, displayPrice(o.Amount, o.Asset), paymentAssetName(o.Asset), chain.Name, transactions, o.Wallet, o.Email, o.PaidAt.UTC().Format(time.RFC3339), s.cfg.Origin)
+	text := s.receiptText(o)
 	recipients := []any{map[string]any{"to": []any{map[string]string{"email": o.Email}}}}
 	if !strings.EqualFold(o.Email, s.cfg.ReceiptTo) {
 		recipients = append(recipients, map[string]any{"to": []any{map[string]string{"email": s.cfg.ReceiptTo}}})
@@ -123,4 +95,36 @@ func (s *Server) retryReceipt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respond(w, map[string]bool{"ok": true})
+}
+
+func (s *Server) receiptText(o Order) string {
+	chain := s.cfg.Chains[o.ChainID]
+	if o.Asset == "BTC" {
+		chain.Name = "Bitcoin (" + o.BitcoinNetwork + ")"
+	}
+	if o.Asset == "XMR" {
+		chain.Name = "Monero (" + o.MoneroNetwork + ")"
+	}
+	if o.Asset == "NOCK" {
+		chain.Name = "Nockchain"
+	}
+	transactions := o.TxHash
+	if len(o.BitcoinTxIDs) > 0 {
+		transactions = strings.Join(o.BitcoinTxIDs, ", ")
+	}
+	if len(o.MoneroTxIDs) > 0 {
+		transactions = strings.Join(o.MoneroTxIDs, ", ")
+	}
+	if len(o.NockTxIDs) > 0 {
+		transactions = strings.Join(o.NockTxIDs, ", ")
+	}
+	purchase := o.Tier
+	if o.NameAndSigil {
+		purchase = "premium name + sigil"
+	}
+	if o.Random {
+		purchase = "random standard"
+	}
+	return fmt.Sprintf("Payment received\n\nOrder: %s\nPlanet: %s\nSelection: %s\nAmount: %s %s\nNetwork: %s\nTransaction: %s\nBuyer wallet: %s\nDelivery email: %s\nPaid at: %s\n\nThe planet code is delivered separately to the buyer. View the order at %s.\n",
+		o.ID, o.Planet, purchase, displayPrice(o.Amount, o.Asset), paymentAssetName(o.Asset), chain.Name, transactions, o.Wallet, o.Email, o.PaidAt.UTC().Format(time.RFC3339), s.cfg.Origin)
 }

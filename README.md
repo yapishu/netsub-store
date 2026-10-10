@@ -13,12 +13,11 @@ cp .env.example .env
 chmod 600 .env
 # Fill in .env using the configuration table below.
 go run ./cmd/store encryption-key
-go run ./cmd/store hash-password
 docker compose up -d --build
 docker compose logs -f store
 ```
 
-The two helper commands print an encryption key and a bcrypt password hash respectively; put them in `.env`. The password prompt hides input. Quote the bcrypt hash with single quotes in `.env` to preserve dollar signs. You can build the image first and run `docker compose run --rm --no-deps store encryption-key` or `hash-password` if Go is not installed locally.
+The encryption-key command prints a key to put in `.env`. You can also run `docker compose run --rm --no-deps store encryption-key` after building the image. Admin sign-in requires a signature from `ADMIN_WALLET_ADDRESS`.
 
 Compose binds `127.0.0.1:8080`, runs as a non-root user with a read-only root filesystem, and keeps the database in a named volume. Put an HTTPS reverse proxy in front of it and set `PUBLIC_ORIGIN` to that exact public origin, without a trailing slash. An example Caddyfile is in `deploy/Caddyfile.example`. Configure your proxy to rate-limit public traffic as well; the application intentionally ignores forwarded IP headers so clients cannot spoof its rate limits. Behind a proxy, application IP limits apply to the proxy address.
 
@@ -35,7 +34,7 @@ Set `ADMIN_WALLET_ADDRESS` to the public EVM wallet allowed to administer the st
 | `SPAWN_MNEMONIC_PASSPHRASE`    | Optional BIP39 passphrase used when generating that proxy wallet; leave empty if none is used.                                                                                                                           |
 | `DATA_ENCRYPTION_KEY`          | Random 32-byte hex key for AES-GCM encryption of planet codes. Back this up separately from the database.                                                                                                          |
 | `ADMIN_WALLET_ADDRESS` | Public EVM address authorized for admin signature login. Admin challenges explicitly state their purpose and are origin-bound, expiring, and single-use. |
-| `ADMIN_PASSWORD_HASH` | Optional bcrypt hash for password sign-in. Configure at least one admin sign-in method. |
+| `COINGECKO_DEMO_API_KEY` | Optional Demo key for market prices; empty uses the keyless endpoint. |
 | `SENDGRID_API_KEY`             | SendGrid key with Mail Send permission.                                                                                                                                                                                  |
 | `RECEIPT_EMAIL` | Receipt-copy destination; defaults to `matwet@subject.network`. Receives no planet codes. |
 | `EMAIL_FROM`                   | Verified SendGrid sender email address.                                                                                                                                                                                  |
@@ -78,7 +77,7 @@ Set `BITCOIN_RPC_URL` to the LAN node's base URL (for example, `http://192.168.1
 
 `BITCOIN_NETWORK` is `main` by default; `test`, `signet`, and `regtest` are available for matching nodes. `BITCOIN_CONFIRMATIONS` defaults to 6 and must be at least 1. The node must be synchronized and the wallet must finish scanning before checkout or payment verification proceeds. Leave `BITCOIN_RPC_URL` empty to disable and hide Bitcoin. Existing ETH and USDC checkout remains available when Bitcoin is disabled or unreachable.
 
-BTC quotes convert the selected USD/USDC tier price using [Coinbase's BTC/USD spot price](https://docs.cdp.coinbase.com/coinbase-app/track-apis/prices), cached for at most one minute. Amounts round up to whole satoshis and remain fixed for the 20-minute quote. The buyer signs in with the same Ethereum wallet account used by the store, then pays from any Bitcoin wallet using the address or BIP21 link. Each order gets one address, recovered by its wallet label if a request times out. Address assignments, rate, amount, confirmation threshold, and payment outputs persist in the database.
+BTC quotes convert the selected USD/USDC tier price using [CoinGecko’s USD market prices](https://docs.coingecko.com/reference/simple-price), cached for at most one minute. Amounts round up to whole satoshis and remain fixed for the 20-minute quote. The buyer signs in with the same Ethereum wallet account used by the store, then pays from any Bitcoin wallet using the address or BIP21 link. Each order gets one address, recovered by its wallet label if a request times out. Address assignments, rate, amount, confirmation threshold, and payment outputs persist in the database.
 
 Payment detection uses Bitcoin Core wallet transactions, accepts partial payments that together cover the quote, and waits for the configured confirmations. The node must first receive the payment within the quote window; confirmation can occur afterward. Confirmed outputs are consumed once. Conflicted outputs and payments to another address do not count. Late or insufficient payments require operator review; the store does not issue automatic refunds. Bitcoin integration tests cover a watch-only wallet on an isolated Bitcoin Core regtest node.
 
@@ -88,7 +87,7 @@ Set `MONERO_WALLET_RPC_URL`, its `MONERO_WALLET_RPC_USER` and `MONERO_WALLET_RPC
 
 `MONERO_NETWORK` defaults to `mainnet` and also accepts `stagenet` or `testnet`. `MONERO_ACCOUNT_INDEX` defaults to `0`. `MONERO_CONFIRMATIONS` defaults to `10`, with a minimum of `10`; funds must also be unlocked. Each order receives a unique labeled subaddress. Its account/index, quote, rate, first payment observation, and consumed transfers persist across restarts. The wallet saves the subaddress label before the address reaches the buyer.
 
-Quotes use [Kraken's XMR/USD last-trade price](https://docs.kraken.com/api-reference/market-data/get-ticker-information), cached for at most one minute, and round up to whole atomic units (12 decimal places). The quote lasts 20 minutes. Payments must first be detected by the store before expiry; confirmations and unlocking can finish afterward. Keep the wallet and store running during checkout. Payments first seen after expiry, insufficient payments, sender time locks, and conflicts require operator review. Partial payments are combined; transfers to other subaddresses do not count. A stale wallet, wrong network, or unavailable daemon pauses verification without releasing the reservation. The store never signs or sends XMR.
+Quotes use [CoinGecko’s XMR/USD price](https://docs.coingecko.com/reference/simple-price), cached for at most one minute, and round up to whole atomic units (12 decimal places). The quote lasts 20 minutes. Payments must first be detected by the store before expiry; confirmations and unlocking can finish afterward. Keep the wallet and store running during checkout. Payments first seen after expiry, insufficient payments, sender time locks, and conflicts require operator review. Partial payments are combined; transfers to other subaddresses do not count. A stale wallet, wrong network, or unavailable daemon pauses verification without releasing the reservation. The store never signs or sends XMR.
 
 XMR uses the same Ethereum-wallet sign-in as the other payment methods; the buyer pays from a separate Monero wallet. Receipt and order records associate the payment with that store account and delivery email.
 
@@ -98,7 +97,7 @@ The container bundles the `feat/sigil-patterns` branch of [yapishu/gonetia](http
 
 For native runs, `scripts/prepare-gonetia.sh '~star'` checks out the same gonetia revision, initializes its wordlist submodule, runs it, and copies its seven result files into `data/gonetia`. Its Go toolchain is downloaded automatically if needed. Generate lists for the same star as `STAR` and set `GONETIA_DIR=data/gonetia`.
 
-The store imports gonetia’s actual outputs rather than reimplementing its classifications. It intersects tags with the roller’s unspawned inventory and validates each inventory name’s parent. Premium names include doubles, only English, and only approximate. Unique contains sigil patterns without a premium name. Rare includes any English, any approximate, and alliteration. Tier precedence is Premium, Unique, Rare, then Standard. USD/USDC prices default to $10 Standard, $15 Rare, $25 Unique, $30 Premium name, and $35 for a Premium name with a sigil pattern. The combined picks stay under Premium and carry a “name + sigil” label. ETH prices are independently configurable; BTC and XMR quotes convert the matching USD price. Random checkout chooses only Standard inventory for $5 in USDC or either enabled node-backed currency. Existing reservations retain their quoted price and tier. Admin shows generated and available counts per category; overlapping categories are not additive. Sigil classification matches the 66 quadrant patterns from [venetia-sigil](https://github.com/urbitme/venetia-sigil), including wildcard and alternative pattern variants. An unset native `GONETIA_DIR` classifies everything as standard.
+The store imports gonetia’s actual outputs rather than reimplementing its classifications. It intersects tags with the roller’s unspawned inventory and validates each inventory name’s parent. Premium names include doubles, only English, and only approximate. Unique contains sigil patterns without a premium name. Rare includes any English, any approximate, and alliteration. Tier precedence is Premium, Unique, Rare, then Standard. USD/USDC prices default to $10 Standard, $15 Rare, $25 Unique, $30 Premium name, and $35 for a Premium name with a sigil pattern. The combined picks stay under Premium and carry a “name + sigil” label. ETH, BTC, XMR, and NOCK quotes convert the matching USD price. USDC uses a $1 unit price. Random checkout chooses only Standard inventory for $5 in USDC or either enabled node-backed currency. Existing reservations retain their quoted price and tier. Admin shows generated and available counts per category; overlapping categories are not additive. Sigil classification matches the 66 quadrant patterns from [venetia-sigil](https://github.com/urbitme/venetia-sigil), including wildcard and alternative pattern variants. An unset native `GONETIA_DIR` classifies everything as standard.
 
 ## Recovery and operations
 
@@ -116,10 +115,10 @@ The store imports gonetia’s actual outputs rather than reimplementing its clas
 ## Local preview and development
 
 ```sh
-scripts/preview.sh
+ADMIN_WALLET_ADDRESS=0xYOUR_PUBLIC_WALLET scripts/preview.sh
 ```
 
-Preview is available at `http://localhost:8080`; `/admin` uses `preview-password-only`. It has its own database and encryption key under `data/`. Preview cannot take payments or send emails.
+Preview is available at `http://localhost:8080`; `/admin` uses the configured wallet signature. It has its own database and encryption key under `data/`. Preview cannot take payments or send emails.
 
 For frontend development, run the backend with `PUBLIC_ORIGIN=http://localhost:5173`, then `npm --prefix web run dev`. Vite proxies `/api` to port 8080. For native production execution, load the variables from `.env` into your process environment, build the frontend, and run `go run ./cmd/store`. The Go process does not parse `.env` itself.
 
@@ -143,3 +142,39 @@ The tests cover payment matching and finality, replay protection, reservation pr
 - [Etherscan V2 receipts](https://docs.etherscan.io/api-reference/endpoint/ethgettransactionreceipt)
 - [Circle USDC contract addresses](https://developers.circle.com/stablecoins/usdc-contract-addresses)
 - [SendGrid Mail Send](https://www.twilio.com/docs/sendgrid/api-reference/mail-send/mail-send)
+
+## Market quotes and email tests
+
+Tier prices are in USD. ETH, BTC, and XMR share one batched CoinGecko request, fetched on demand at most once per minute. No request runs while nobody checks out. Set `COINGECKO_DEMO_API_KEY` to use a Demo key, or leave it empty for the keyless public endpoint. The cache also throttles failed requests. Invalid, missing, or market timestamps older than ten minutes block that currency's new quotes; the store does not substitute stale prices. NOCK uses the Nockblocks USD quote with a one-minute cache and the shared five-second provider request spacing. A reservation keeps its saved amount, recipient, and rate for the 20-minute payment window.
+
+CoinGecko's free Demo plan has a monthly request cap. One request every minute continuously would use approximately 43,200 calls in a 30-day month; on-demand fetching reduces idle usage. See [current CoinGecko API plans](https://www.coingecko.com/en/api/pricing).
+
+In `/admin`, **Test email** previews the actual delivery and receipt templates with clearly marked sample data. Enter the recipient, select a template, and click **Send test email**. Success means SendGrid accepted the message; inbox delivery is checked in that mailbox. Test messages use an unusable sample code, send only to the entered address, and do not create orders. Preview mode does not send emails.
+
+Order lists hide unpaid reservations older than two hours by default. **Show older unpaid orders** reveals them; no records are deleted. Orders with payment evidence or requiring review stay visible. Admin displays payment destinations and transaction IDs. **Download payment destinations** exports every order, including hidden orders, with network and wallet derivation details. See [fund recovery](docs/payment-wallets.md#find-and-recover-payments).
+
+## Two reverse proxies
+
+Set `PUBLIC_ORIGIN` to the browser-facing HTTPS origin, without a path or trailing slash. Both proxies preserve that public `Host`, the browser `Origin`, `Cookie`, `Set-Cookie`, and `X-CSRF-Token`. The application authenticates against the public origin regardless of whether the final upstream hop uses HTTP. Same-origin GET requests often omit `Origin`, so the public `Host` must reach the application. `X-Forwarded-Host` alone is insufficient.
+
+For example, a public Caddy proxy can forward to a home proxy over a private tunnel:
+
+```caddyfile
+planets.example.com {
+    reverse_proxy http://10.0.0.2:8088 {
+        header_up Host planets.example.com
+    }
+}
+```
+
+The home Caddy proxy forwards to the local store:
+
+```caddyfile
+:8088 {
+    reverse_proxy 127.0.0.1:8811 {
+        header_up Host planets.example.com
+    }
+}
+```
+
+Use your actual tunnel address and store port. If the public-to-home hop crosses the public internet, use HTTPS or an encrypted tunnel. Both proxies pass API responses without caching. The app ignores forwarded client IP headers; its IP limits therefore group clients behind the final proxy. Configure per-client limits at the public edge. See [Caddy reverse proxy headers](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy#headers).

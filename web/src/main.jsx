@@ -10,6 +10,7 @@ import {
   paymentPrefix,
   addressNetworkName,
 } from "./payment";
+import { olderUnpaid } from "./orders";
 import "./style.css";
 
 let csrf = "";
@@ -96,7 +97,8 @@ function App() {
     [provider, setProvider] = useState(null),
     [walletModal, setWalletModal] = useState(false),
     [orders, setOrders] = useState([]),
-    [showOrders, setShowOrders] = useState(false);
+    [showOrders, setShowOrders] = useState(false),
+    [showOlder, setShowOlder] = useState(false);
   const admin = location.pathname === "/admin";
   const run = async (fn) => {
     setBusy(true);
@@ -266,21 +268,32 @@ function App() {
                     Close
                   </button>
                 </div>
-                {orders.length === 0 ? (
-                  <p>No purchases yet.</p>
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={showOlder}
+                    onChange={(e) => setShowOlder(e.target.checked)}
+                  />{" "}
+                  Show older unpaid orders
+                </label>
+                {orders.filter((o) => showOlder || !olderUnpaid(o)).length ===
+                0 ? (
+                  <p>No recent unpaid orders or purchases.</p>
                 ) : (
-                  orders.map((o) => (
-                    <OrderCard
-                      key={o.id}
-                      order={o}
-                      config={config}
-                      provider={provider}
-                      run={run}
-                      refresh={loadOrders}
-                      busy={busy}
-                      connect={() => setWalletModal(true)}
-                    />
-                  ))
+                  orders
+                    .filter((o) => showOlder || !olderUnpaid(o))
+                    .map((o) => (
+                      <OrderCard
+                        key={o.id}
+                        order={o}
+                        config={config}
+                        provider={provider}
+                        run={run}
+                        refresh={loadOrders}
+                        busy={busy}
+                        connect={() => setWalletModal(true)}
+                      />
+                    ))
                 )}
               </section>
             )}
@@ -445,17 +458,17 @@ function Storefront({
     selectedButton.current?.focus({ preventScroll: true });
   }
   const current = orders.find((o) => o.id === order?.id) || order;
-  function planetPrice(planet, currency = "USDC") {
+  function planetPrice(planet) {
     if (planet?.random) return config.randomUsdc;
     const prefix = planet?.nameAndSigil
       ? "premiumSigil"
       : ["premium", "unique", "rare"].includes(planet?.tier)
         ? planet.tier
         : "";
-    const suffix = currency === "ETH" ? "Eth" : "Usdc";
+    const suffix = "Usdc";
     return config.prices[prefix ? prefix + suffix : suffix.toLowerCase()];
   }
-  const price = planetPrice(selected, asset);
+  const price = planetPrice(selected);
   const addressPayment = isAddressPayment(asset);
   const currencyName = addressNetworkName(asset);
   const paymentConfig =
@@ -464,7 +477,7 @@ function Storefront({
       : asset === "XMR"
         ? config.monero
         : config.bitcoin;
-  const quotedPrice = addressPayment || asset === "NOCK_BASE";
+  const quotedPrice = asset !== "USDC";
   const paymentChain = addressPayment
     ? 0
     : asset === "NOCK_BASE"
@@ -712,6 +725,12 @@ function Storefront({
                     {asset} amount is fixed when you reserve. Payment confirms
                     after {paymentConfig.confirmations} {currencyName}{" "}
                     confirmations{asset === "XMR" ? " and funds unlock" : ""}.
+                  </p>
+                )}
+                {asset === "ETH" && (
+                  <p className="caption">
+                    The live ETH amount is fixed when you reserve, for 20
+                    minutes.
                   </p>
                 )}
                 {asset === "NOCK_BASE" && (
@@ -1027,9 +1046,9 @@ function AddressPayment({ order, expired, run }) {
   );
 }
 function Admin({ session, setSession, run, busy, config, connect }) {
-  const [password, setPassword] = useState(""),
-    [data, setData] = useState(null),
-    [saved, setSaved] = useState("");
+  const [data, setData] = useState(null),
+    [saved, setSaved] = useState(""),
+    [showOlder, setShowOlder] = useState(false);
   async function refresh() {
     setData(await api("/admin"));
   }
@@ -1049,32 +1068,6 @@ function Admin({ session, setSession, run, busy, config, connect }) {
               Sign in with wallet
             </button>
           </div>
-        )}
-        {config.adminLogin?.password && (
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              run(async () => {
-                setSession(await api("/auth/login", { password }));
-                setPassword("");
-              });
-            }}
-          >
-            <label>
-              Admin password
-              <input
-                autoFocus
-                type="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </label>
-            <button className="primary" disabled={busy}>
-              Sign in
-            </button>
-          </form>
         )}
       </section>
     );
@@ -1136,18 +1129,18 @@ function Admin({ session, setSession, run, busy, config, connect }) {
             Receives ETH, USDC, and $NOCK on Base. This address is independent
             of the key used to spawn planets. Changes apply to new orders.
           </p>
+          <p className="caption">
+            Set tier prices in USD. ETH, BTC, and XMR use CoinGecko quotes
+            cached for one minute; NOCK uses Nockblocks. USDC is priced at $1.
+            Each reservation fixes its coin amount for 20 minutes.
+          </p>
           <div className="price-grid">
             {[
-              ["eth", "Standard · ETH"],
-              ["usdc", "Standard · USDC"],
-              ["rareEth", "Rare · ETH"],
-              ["rareUsdc", "Rare · USDC"],
-              ["uniqueEth", "Unique · ETH"],
-              ["uniqueUsdc", "Unique · USDC"],
-              ["premiumEth", "Premium · ETH"],
-              ["premiumUsdc", "Premium · USDC"],
-              ["premiumSigilEth", "Name + sigil · ETH"],
-              ["premiumSigilUsdc", "Name + sigil · USDC"],
+              ["usdc", "Standard · USD"],
+              ["rareUsdc", "Rare · USD"],
+              ["uniqueUsdc", "Unique · USD"],
+              ["premiumUsdc", "Premium · USD"],
+              ["premiumSigilUsdc", "Name + sigil · USD"],
             ].map(([k, label]) => (
               <label key={k}>
                 {label}
@@ -1254,12 +1247,25 @@ function Admin({ session, setSession, run, busy, config, connect }) {
           </button>
         </div>
       </div>
+      <EmailTest data={data} run={run} busy={busy} />
       <div className="section-heading">
         <h2>Orders</h2>
+        <a href="/api/admin/payment-ledger" download>
+          Download payment destinations
+        </a>
         <button disabled={busy} onClick={() => run(refresh)}>
           Refresh
         </button>
       </div>
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={showOlder}
+          onChange={(e) => setShowOlder(e.target.checked)}
+        />{" "}
+        Show older unpaid orders (
+        {data.orders.filter((o) => olderUnpaid(o)).length})
+      </label>
       <div className="table-scroll">
         <table>
           <thead>
@@ -1271,97 +1277,109 @@ function Admin({ session, setSession, run, busy, config, connect }) {
             </tr>
           </thead>
           <tbody>
-            {data.orders.map((o) => (
-              <tr key={o.id}>
-                <td>
-                  <b>{o.planet}</b>
-                  <small className="order-id">Order: {o.id}</small>
-                  <small>
-                    {short(o.wallet)}
-                    <br />
-                    {o.email}
-                  </small>
-                </td>
-                <td>
-                  {displayAmount(o.amount, o.asset)} {assetLabel(o.asset)}
-                  <small>
-                    {isAddressPayment(o.asset)
-                      ? addressNetworkName(o.asset)
-                      : o.chainId === 1
-                        ? "Ethereum"
-                        : "Base"}
-                  </small>
-                  {isAddressPayment(o.asset) && (
+            {data.orders
+              .filter((o) => showOlder || !olderUnpaid(o))
+              .map((o) => (
+                <tr key={o.id}>
+                  <td>
+                    <b>{o.planet}</b>
+                    <small className="order-id">Order: {o.id}</small>
                     <small>
-                      {o[paymentPrefix(o.asset) + "Confirmations"] || 0}/
-                      {o[paymentPrefix(o.asset) + "Required"]} confirmations
+                      {short(o.wallet)}
+                      <br />
+                      {o.email}
                     </small>
-                  )}
-                </td>
-                <td>
-                  {o.status.replaceAll("_", " ")}
-                  <small>{o.error}</small>
-                  <small>{o.receiptError}</small>
-                </td>
-                <td>
-                  {(o.status === "review_payment" ||
-                    o.status === "review_fulfillment" ||
-                    o.status.endsWith("_submitted")) && (
-                    <button
-                      disabled={busy}
-                      onClick={() =>
-                        run(async () => {
-                          await api(`/admin/orders/${o.id}/recheck`, {});
-                          await refresh();
-                        })
-                      }
-                    >
-                      Recheck state
-                    </button>
-                  )}
-                  {o.paidAt && !o.paidAt.startsWith("0001-") && (
-                    <button
-                      disabled={busy}
-                      onClick={() =>
-                        run(async () => {
-                          await api(`/admin/orders/${o.id}/receipt`, {});
-                          await refresh();
-                        })
-                      }
-                    >
-                      Resend receipt
-                    </button>
-                  )}
-                  {o.status === "delivered" && (
-                    <button
-                      disabled={busy}
-                      onClick={() =>
-                        run(async () => {
-                          await api(`/admin/orders/${o.id}/email`, {});
-                          await refresh();
-                        })
-                      }
-                    >
-                      Resend email
-                    </button>
-                  )}
-                  {["awaiting_payment", "review_payment"].includes(o.status) &&
-                    Date.now() > Date.parse(o.expires) + 86400000 && (
+                  </td>
+                  <td>
+                    {displayAmount(o.amount, o.asset)} {assetLabel(o.asset)}
+                    <small>
+                      {isAddressPayment(o.asset)
+                        ? addressNetworkName(o.asset)
+                        : o.chainId === 1
+                          ? "Ethereum"
+                          : "Base"}
+                    </small>
+                    <small className="payment-destination">
+                      To: {o.recipient || "Address pending"}
+                    </small>
+                    {o.txHash && (
+                      <small className="payment-destination">
+                        Transaction: {o.txHash}
+                      </small>
+                    )}
+                    {isAddressPayment(o.asset) && (
+                      <small>
+                        {o[paymentPrefix(o.asset) + "Confirmations"] || 0}/
+                        {o[paymentPrefix(o.asset) + "Required"]} confirmations
+                      </small>
+                    )}
+                  </td>
+                  <td>
+                    {o.status.replaceAll("_", " ")}
+                    <small>{o.error}</small>
+                    <small>{o.receiptError}</small>
+                  </td>
+                  <td>
+                    {(o.status === "review_payment" ||
+                      o.status === "review_fulfillment" ||
+                      o.status.endsWith("_submitted")) && (
                       <button
                         disabled={busy}
                         onClick={() =>
                           run(async () => {
-                            await api(`/admin/orders/${o.id}/release`, {});
+                            await api(`/admin/orders/${o.id}/recheck`, {});
                             await refresh();
                           })
                         }
                       >
-                        Close unpaid order
+                        Recheck state
                       </button>
                     )}
-                </td>
-              </tr>
-            ))}
+                    {o.paidAt && !o.paidAt.startsWith("0001-") && (
+                      <button
+                        disabled={busy}
+                        onClick={() =>
+                          run(async () => {
+                            await api(`/admin/orders/${o.id}/receipt`, {});
+                            await refresh();
+                          })
+                        }
+                      >
+                        Resend receipt
+                      </button>
+                    )}
+                    {o.status === "delivered" && (
+                      <button
+                        disabled={busy}
+                        onClick={() =>
+                          run(async () => {
+                            await api(`/admin/orders/${o.id}/email`, {});
+                            await refresh();
+                          })
+                        }
+                      >
+                        Resend email
+                      </button>
+                    )}
+                    {["awaiting_payment", "review_payment"].includes(
+                      o.status,
+                    ) &&
+                      Date.now() > Date.parse(o.expires) + 86400000 && (
+                        <button
+                          disabled={busy}
+                          onClick={() =>
+                            run(async () => {
+                              await api(`/admin/orders/${o.id}/release`, {});
+                              await refresh();
+                            })
+                          }
+                        >
+                          Close unpaid order
+                        </button>
+                      )}
+                  </td>
+                </tr>
+              ))}
           </tbody>
         </table>
         {!data.orders.length && <p className="empty">No orders yet.</p>}
@@ -1430,3 +1448,75 @@ function Activity({ run, busy }) {
   );
 }
 createRoot(document.getElementById("root")).render(<App />);
+
+function EmailTest({ data, run, busy }) {
+  const [email, setEmail] = useState(
+    data.receiptEmail?.toLowerCase() !== data.emailFrom?.toLowerCase()
+      ? data.receiptEmail || ""
+      : "",
+  );
+  const [kind, setKind] = useState("delivery");
+  const [previews, setPreviews] = useState(null);
+  const [status, setStatus] = useState("");
+  useEffect(() => {
+    run(async () => setPreviews(await api("/admin/email-preview")));
+  }, []);
+  const preview = previews?.[kind];
+  return (
+    <section className="panel email-test">
+      <h2>Test email</h2>
+      <p className="caption">
+        From: {data.emailFrom || "Sender not configured"}. Send to another inbox
+        you control to check delivery.
+      </p>
+      <p className="caption">
+        Preview the customer template with sample data. Test messages contain an
+        unusable sample code.
+      </p>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          setStatus("");
+          run(async () => {
+            const result = await api("/admin/test-email", { email, kind });
+            setStatus(result.message);
+          });
+        }}
+      >
+        <div className="email-test-fields">
+          <label>
+            Send test to
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </label>
+          <label>
+            Template
+            <select value={kind} onChange={(e) => setKind(e.target.value)}>
+              <option value="delivery">Planet code delivery</option>
+              <option value="receipt">Payment receipt</option>
+            </select>
+          </label>
+        </div>
+        {preview && (
+          <details>
+            <summary>Preview: {preview.subject}</summary>
+            <pre className="email-preview">{preview.text}</pre>
+          </details>
+        )}
+        <button disabled={busy || !data.sendgridConfigured || data.demo}>
+          Send test email
+        </button>
+        {(!data.sendgridConfigured || data.demo) && (
+          <p className="caption">
+            Email sending requires a live store with SendGrid configured.
+          </p>
+        )}
+        {status && <p role="status">{status}</p>}
+      </form>
+    </section>
+  );
+}

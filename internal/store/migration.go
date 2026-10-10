@@ -23,8 +23,8 @@ func migrateStore(tx *bolt.Tx) error {
 		if err := json.Unmarshal(data, &old); err != nil {
 			return fmt.Errorf("read settings migration: %w", err)
 		}
-		old.Prices.PremiumETH, old.Prices.PremiumUSDC = old.Prices.RareETH, old.Prices.RareUSDC
-		old.Prices.RareETH, old.Prices.RareUSDC = "0.0045", "15"
+		old.Prices.PremiumUSDC = old.Prices.RareUSDC
+		old.Prices.RareUSDC = "15"
 		old.PremiumStrategies = append(old.RareStrategies, "sigils")
 		old.RareStrategies = []string{"any_english", "any_approx", "alliteration"}
 		data, err := json.Marshal(old)
@@ -144,9 +144,7 @@ func migrateUniqueTier(tx *bolt.Tx) error {
 		if err := json.Unmarshal(data, &cfg); err != nil {
 			return err
 		}
-		cfg.Prices.UniqueETH = "0.0075"
 		cfg.Prices.UniqueUSDC = "25"
-		cfg.Prices.PremiumSigilETH = "0.0105"
 		cfg.Prices.PremiumSigilUSDC = "35"
 		withoutSigils := func(strategies []string) []string {
 			out := []string{}

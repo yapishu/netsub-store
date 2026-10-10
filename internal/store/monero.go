@@ -15,7 +15,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -64,15 +63,12 @@ func moneroFromEnv() (MoneroConfig, error) {
 }
 
 type Monero struct {
-	cfg                    MoneroConfig
-	wallet, daemon, prices *http.Client
-	id                     atomic.Uint64
-	rateMu                 sync.Mutex
-	rate                   string
-	rateAt                 time.Time
+	cfg            MoneroConfig
+	wallet, daemon *http.Client
+	id             atomic.Uint64
 }
 
-func newMonero(c MoneroConfig, prices *http.Client) *Monero {
+func newMonero(c MoneroConfig) *Monero {
 	client := func(user, password string) *http.Client {
 		var transport http.RoundTripper = http.DefaultTransport
 		if user != "" {
@@ -80,7 +76,7 @@ func newMonero(c MoneroConfig, prices *http.Client) *Monero {
 		}
 		return &http.Client{Transport: transport, Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	}
-	return &Monero{cfg: c, wallet: client(c.WalletUser, c.WalletPassword), daemon: client(c.DaemonUser, c.DaemonPassword), prices: prices}
+	return &Monero{cfg: c, wallet: client(c.WalletUser, c.WalletPassword), daemon: client(c.DaemonUser, c.DaemonPassword)}
 }
 func (m *Monero) call(ctx context.Context, daemon bool, method string, params any, out any) error {
 	id := m.id.Add(1)
@@ -209,43 +205,6 @@ func (m *Monero) address(ctx context.Context, orderID string) (moneroAddress, er
 		return found, err
 	}
 	return found, nil
-}
-func (m *Monero) usdRate(ctx context.Context) (string, error) {
-	m.rateMu.Lock()
-	defer m.rateMu.Unlock()
-	if m.rate != "" && time.Since(m.rateAt) < time.Minute {
-		return m.rate, nil
-	}
-	req, err := http.NewRequestWithContext(ctx, "GET", "https://api.kraken.com/0/public/Ticker?pair=XMRUSD", nil)
-	if err != nil {
-		return "", err
-	}
-	resp, err := m.prices.Do(req)
-	if err != nil {
-		return "", errors.New("Monero exchange rate unavailable")
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return "", errors.New("Monero exchange rate unavailable")
-	}
-	var data struct {
-		Error  []string
-		Result map[string]struct {
-			Close []string `json:"c"`
-		}
-	}
-	if err = json.NewDecoder(io.LimitReader(resp.Body, 8192)).Decode(&data); err != nil || len(data.Error) > 0 {
-		return "", errors.New("Invalid Monero exchange rate")
-	}
-	ticker, ok := data.Result["XXMRZUSD"]
-	if !ok || len(ticker.Close) != 2 {
-		return "", errors.New("Missing XMR/USD exchange rate")
-	}
-	if _, err = moneroQuote("1", ticker.Close[0]); err != nil {
-		return "", err
-	}
-	m.rate, m.rateAt = ticker.Close[0], time.Now()
-	return m.rate, nil
 }
 func moneroQuote(usd, rate string) (string, error) {
 	dollars, err := units(usd, 6)
