@@ -150,6 +150,7 @@ func (s *Server) Handler() http.Handler {
 		}
 		respond(w, map[string]bool{"ok": true})
 	}))
+	mux.HandleFunc("POST /api/admin/orders/{id}/confirm-payment", s.protect(true, s.confirmPayment))
 	mux.HandleFunc("POST /api/admin/orders/{id}/recheck", s.protect(true, s.recheck))
 	mux.HandleFunc("POST /api/admin/orders/{id}/email", s.protect(true, s.retryEmail))
 	mux.HandleFunc("POST /api/admin/orders/{id}/release", s.protect(true, s.releaseOrder))

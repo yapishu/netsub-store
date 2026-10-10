@@ -73,8 +73,8 @@ func FromEnv() (Config, error) {
 		id             int
 		name, fallback string
 	}{
-		{1, "ETH_CONFIRMATIONS", "3"},
-		{8453, "BASE_CONFIRMATIONS", "12"},
+		{1, "ETH_CONFIRMATIONS", "20"},
+		{8453, "BASE_CONFIRMATIONS", "180"},
 	} {
 		count, err := strconv.ParseUint(env(setting.name, setting.fallback), 10, 64)
 		if err != nil || count < 1 || count > 100000 {
@@ -197,6 +197,7 @@ type Order struct {
 	EmailNext            time.Time `json:"-"`
 	PaidAt               time.Time `json:"paidAt"`
 	ReceiptSent          bool      `json:"receiptSent"`
+	PaymentConfirmedBy   string    `json:"paymentConfirmedBy,omitempty"`
 	ReceiptError         string    `json:"receiptError,omitempty"`
 	ReceiptAttempts      int       `json:"-"`
 	ReceiptNext          time.Time `json:"-"`
@@ -243,7 +244,7 @@ func putOrder(tx *bolt.Tx, o Order) error {
 		Status: o.Status, Asset: o.Asset, Amount: o.Amount, ChainID: o.ChainID, TxHash: o.TxHash,
 		Tier: o.Tier, NameAndSigil: o.NameAndSigil, Random: o.Random, PaymentChecks: o.Checks, EmailAttempts: o.EmailAttempts,
 		ReceiptAttempts: o.ReceiptAttempts, EmailSent: o.EmailSent, ReceiptSent: o.ReceiptSent,
-		Error: o.Error, ReceiptError: o.ReceiptError, BitcoinNetwork: o.BitcoinNetwork, BitcoinConfirmations: o.BitcoinConfirmations, BitcoinReceived: o.BitcoinReceived, BitcoinTxIDs: o.BitcoinTxIDs, MoneroNetwork: o.MoneroNetwork, MoneroConfirmations: o.MoneroConfirmations, MoneroReceived: o.MoneroReceived, MoneroTxIDs: o.MoneroTxIDs})
+		PaymentConfirmedBy: o.PaymentConfirmedBy, Error: o.Error, ReceiptError: o.ReceiptError, BitcoinNetwork: o.BitcoinNetwork, BitcoinConfirmations: o.BitcoinConfirmations, BitcoinReceived: o.BitcoinReceived, BitcoinTxIDs: o.BitcoinTxIDs, MoneroNetwork: o.MoneroNetwork, MoneroConfirmations: o.MoneroConfirmations, MoneroReceived: o.MoneroReceived, MoneroTxIDs: o.MoneroTxIDs})
 }
 func decodeOrder(b []byte) (Order, error) {
 	var s storedOrder

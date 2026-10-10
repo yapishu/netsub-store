@@ -303,10 +303,10 @@ func TestPaymentValidation(t *testing.T) {
 		t.Fatal("removed log accepted")
 	}
 }
-func TestFinalityAndReplayConsumption(t *testing.T) {
+func TestConfirmationDepthAndReplayConsumption(t *testing.T) {
 	s := testServer(t)
 	ch, _, tx, receipt, block := transferFixture()
-	finalized := false
+	confirmed := false
 	rpc := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Method string
@@ -322,14 +322,11 @@ func TestFinalityAndReplayConsumption(t *testing.T) {
 		case "eth_getTransactionReceipt":
 			result = receipt
 		case "eth_getBlockByNumber":
-			if string(req.Params[0]) == `"finalized"` {
-				number := "0xf"
-				if finalized {
-					number = "0x10"
-				}
-				result = chainBlock{Number: number}
-			} else {
-				result = block
+			result = block
+		case "eth_blockNumber":
+			result = "0x10"
+			if confirmed {
+				result = "0x11"
 			}
 		default:
 			t.Errorf("unexpected RPC: %s", req.Method)
@@ -338,6 +335,7 @@ func TestFinalityAndReplayConsumption(t *testing.T) {
 	}))
 	defer rpc.Close()
 	ch.RPC = rpc.URL
+	ch.Confirmations = 2
 	s.cfg.Chains[8453] = ch
 	o := create(t, s, "~sampel-palnet")
 	o.Asset = "ETH"
@@ -348,12 +346,12 @@ func TestFinalityAndReplayConsumption(t *testing.T) {
 	_ = s.save(o)
 	s.checkPayment(context.Background(), o)
 	if readOrder(t, s, o.ID).Status != "confirming" {
-		t.Fatal("unfinalized payment accepted")
+		t.Fatal("payment below confirmation threshold accepted")
 	}
-	finalized = true
+	confirmed = true
 	s.checkPayment(context.Background(), o)
 	if readOrder(t, s, o.ID).Status != "paid" {
-		t.Fatal("finalized payment not accepted")
+		t.Fatal("confirmed payment not accepted")
 	}
 	other := o
 	other.ID = token()

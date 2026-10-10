@@ -7,7 +7,7 @@
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "test": "node --test test/*.test.mjs",
-    "test:browser": "node test/browser.mjs && node test/nock-browser.mjs && node test/admin-browser.mjs",
+    "test:browser": "node test/browser.mjs && node test/nock-browser.mjs && node test/admin-browser.mjs && node test/purchases-browser.mjs",
     "format": "prettier --write src test vite.config.js index.html"
   },
   "dependencies": {

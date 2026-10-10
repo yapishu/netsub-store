@@ -147,40 +147,20 @@ func (r *ChainReader) Verify(ctx context.Context, ch Chain, o Order) error {
 	if e := validateTransfer(ch, o, tx, receipt, block); e != nil {
 		return e
 	}
-	// A configured RPC must attest to finalization. Explorer-only mode uses a
-	// configured confirmation depth and exposes it in the public chain config.
-	if ch.RPC != "" {
-		var finalized chainBlock
-		if e := r.call(ctx, ch, "eth_getBlockByNumber", []any{"finalized", false}, &finalized); e != nil {
-			return e
-		}
-		f, e := quantity(finalized.Number)
-		if e != nil {
-			return e
-		}
-		n, e := quantity(receipt.BlockNumber)
-		if e != nil {
-			return e
-		}
-		if f < n {
-			return ErrPending
-		}
-	} else {
-		var tip string
-		if e := r.call(ctx, ch, "eth_blockNumber", nil, &tip); e != nil {
-			return e
-		}
-		h, e := quantity(tip)
-		if e != nil {
-			return e
-		}
-		n, e := quantity(receipt.BlockNumber)
-		if e != nil {
-			return e
-		}
-		if ch.Confirmations == 0 || h < n || h-n < ch.Confirmations-1 {
-			return ErrPending
-		}
+	var tip string
+	if e := r.call(ctx, ch, "eth_blockNumber", nil, &tip); e != nil {
+		return e
+	}
+	h, e := quantity(tip)
+	if e != nil {
+		return e
+	}
+	n, e := quantity(receipt.BlockNumber)
+	if e != nil {
+		return e
+	}
+	if ch.Confirmations == 0 || h < n || h-n < ch.Confirmations-1 {
+		return ErrPending
 	}
 	var canonical chainBlock
 	if e := r.call(ctx, ch, "eth_getBlockByNumber", []any{receipt.BlockNumber, false}, &canonical); e != nil {

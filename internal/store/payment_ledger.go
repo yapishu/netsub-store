@@ -13,7 +13,7 @@ func (s *Server) paymentLedger(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 		for _, o := range orders {
-			row := map[string]any{"orderId": o.ID, "asset": o.Asset, "amount": o.Amount, "recipient": o.Recipient, "status": o.Status, "created": o.Created, "paidAt": o.PaidAt, "chainId": o.ChainID, "transaction": o.TxHash}
+			row := map[string]any{"orderId": o.ID, "asset": o.Asset, "amount": o.Amount, "recipient": o.Recipient, "status": o.Status, "created": o.Created, "paidAt": o.PaidAt, "paymentConfirmedBy": o.PaymentConfirmedBy, "chainId": o.ChainID, "transaction": o.TxHash}
 			switch o.Asset {
 			case "BTC":
 				row["network"] = o.BitcoinNetwork

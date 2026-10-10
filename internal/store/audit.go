@@ -48,6 +48,7 @@ type Event struct {
 	EmailSent            bool      `json:"emailSent,omitempty"`
 	ReceiptSent          bool      `json:"receiptSent,omitempty"`
 	Error                string    `json:"error,omitempty"`
+	PaymentConfirmedBy   string    `json:"paymentConfirmedBy,omitempty"`
 	ReceiptError         string    `json:"receiptError,omitempty"`
 }
 

@@ -18,6 +18,8 @@ try {
         json: { ...config, adminLogin: { wallet: true } },
       }),
     );
+    let manuallyConfirmed = false;
+    let manualRequests = 0;
     let loggedIn = false;
     let rejectSession = true;
     await page.route("**/api/auth/session", (r) =>
@@ -62,6 +64,20 @@ try {
           },
           orders: [
             {
+              id: "pending-order",
+              planet: "~talnul-daldeb",
+              wallet: admin,
+              email: "test@example.com",
+              asset: "ETH",
+              amount: "2005857102740001",
+              chainId: 1,
+              status: manuallyConfirmed ? "paid" : "confirming",
+              paidAt: manuallyConfirmed ? new Date().toISOString() : "",
+              paymentConfirmedBy: manuallyConfirmed ? admin : "",
+              created: new Date().toISOString(),
+              recipient: admin,
+            },
+            {
               id: "old-empty",
               planet: "~old-empty",
               wallet: admin,
@@ -95,6 +111,16 @@ try {
           pendingSpawns: 0,
         },
       }),
+    );
+    await page.route(
+      "**/api/admin/orders/pending-order/confirm-payment",
+      (r) => {
+        assert.deepEqual(r.request().postDataJSON(), { confirm: true });
+        assert.equal(r.request().headers()["x-csrf-token"], "synthetic");
+        manualRequests++;
+        manuallyConfirmed = true;
+        return r.fulfill({ json: { ok: true } });
+      },
     );
     await page.route("**/api/admin/email-preview", (r) =>
       r.fulfill({
@@ -164,6 +190,28 @@ try {
       .getByRole("heading", { name: "Store settings", exact: true })
       .waitFor();
     await page.getByText("~paid-order", { exact: true }).waitFor();
+    const manualButton = page.getByRole("button", {
+      name: "Confirm payment manually",
+      exact: true,
+    });
+    await manualButton.scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: `../.impeccable/review/admin-manual-${width}.png`,
+      fullPage: true,
+    });
+    page.once("dialog", async (dialog) => {
+      assert.match(dialog.message(), /~talnul-daldeb/);
+      assert.match(dialog.message(), /bypasses automatic payment checks/);
+      await dialog.dismiss();
+    });
+    await manualButton.click();
+    assert.equal(manualRequests, 0);
+    page.once("dialog", (dialog) => dialog.accept());
+    await manualButton.click();
+    await page.getByText(/Payment confirmed manually by/).waitFor();
+    assert.equal(manualRequests, 1);
+    assert.equal(await manualButton.count(), 0);
+
     assert.equal(
       await page.getByText("~old-empty", { exact: true }).count(),
       0,

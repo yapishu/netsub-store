@@ -97,6 +97,7 @@ function App() {
     [provider, setProvider] = useState(null),
     [walletModal, setWalletModal] = useState(false),
     [orders, setOrders] = useState([]),
+    [ordersStatus, setOrdersStatus] = useState("loading"),
     [showOrders, setShowOrders] = useState(false),
     [showOlder, setShowOlder] = useState(false);
   const admin = location.pathname === "/admin";
@@ -119,11 +120,15 @@ function App() {
       .then(setSession)
       .catch(() => {});
   }, []);
-  async function loadOrders() {
+  async function loadOrders(reveal = false) {
     if (!session?.wallet) return;
     try {
-      setOrders(await api("/orders"));
+      const result = await api("/orders");
+      setOrders(result);
+      setOrdersStatus("ready");
+      if (reveal && result.length) setShowOrders(true);
     } catch (error) {
+      setOrdersStatus("error");
       if (error.status === 401) {
         setSession(null);
         setOrders([]);
@@ -134,9 +139,11 @@ function App() {
   useEffect(() => {
     if (!session?.wallet) {
       setOrders([]);
+      setShowOrders(false);
       return;
     }
-    loadOrders().catch((e) => setError(e.message));
+    setOrdersStatus("loading");
+    loadOrders(true).catch((e) => setError(e.message));
     const t = setInterval(() => {
       if (!document.hidden) loadOrders().catch(() => {});
     }, 10000);
@@ -240,6 +247,19 @@ function App() {
           <a href={admin ? "/" : "https://subject.network"}>
             {admin ? "Storefront" : "About"}
           </a>
+          {!admin && session?.wallet && (
+            <button
+              className="link"
+              aria-expanded={showOrders}
+              aria-controls="purchases"
+              onClick={() => setShowOrders(!showOrders)}
+            >
+              Purchases
+              {ordersStatus === "ready"
+                ? ` (${orders.filter((o) => !olderUnpaid(o)).length})`
+                : ""}
+            </button>
+          )}
           {session ? (
             <button className="wallet" onClick={logout}>
               {session.admin
@@ -281,9 +301,20 @@ function App() {
         ) : (
           <>
             {showOrders && (
-              <section className="purchases">
+              <section
+                className="purchases"
+                id="purchases"
+                aria-label="Your purchases"
+              >
                 <div className="section-heading">
-                  <h2>Your planets</h2>
+                  <h2>Your purchases</h2>
+                  <button
+                    className="link"
+                    disabled={busy}
+                    onClick={() => run(loadOrders)}
+                  >
+                    Refresh
+                  </button>
                   <button className="link" onClick={() => setShowOrders(false)}>
                     Close
                   </button>
@@ -296,8 +327,12 @@ function App() {
                   />{" "}
                   Show older unpaid orders
                 </label>
-                {orders.filter((o) => showOlder || !olderUnpaid(o)).length ===
-                0 ? (
+                {ordersStatus === "loading" ? (
+                  <p role="status">Loading your purchases…</p>
+                ) : ordersStatus === "error" ? (
+                  <p>Could not load your purchases. Refresh to try again.</p>
+                ) : orders.filter((o) => showOlder || !olderUnpaid(o))
+                    .length === 0 ? (
                   <p>No recent unpaid orders or purchases.</p>
                 ) : (
                   orders
@@ -339,11 +374,6 @@ function App() {
         >
           Booting a planet
         </a>
-        {!admin && session?.wallet && (
-          <button className="link" onClick={() => setShowOrders(!showOrders)}>
-            Purchases
-          </button>
-        )}
         <a href="/admin">Admin</a>
       </footer>
       {walletModal && (
@@ -1331,8 +1361,40 @@ function Admin({ session, setSession, run, busy, config, connect }) {
                     {o.status.replaceAll("_", " ")}
                     <small>{o.error}</small>
                     <small>{o.receiptError}</small>
+                    {o.paymentConfirmedBy && (
+                      <small>
+                        Payment confirmed manually by{" "}
+                        {short(o.paymentConfirmedBy)}
+                      </small>
+                    )}
                   </td>
                   <td>
+                    {[
+                      "awaiting_address",
+                      "awaiting_payment",
+                      "confirming",
+                      "review_payment",
+                    ].includes(o.status) && (
+                      <button
+                        disabled={busy}
+                        onClick={() => {
+                          if (
+                            !window.confirm(
+                              `Confirm payment manually for ${o.planet}?\n\nOrder: ${o.id}\nAmount: ${displayAmount(o.amount, o.asset)} ${assetLabel(o.asset)}\n\nOnly continue after checking that you received the payment. This bypasses automatic payment checks and starts planet delivery.`,
+                            )
+                          )
+                            return;
+                          run(async () => {
+                            await api(`/admin/orders/${o.id}/confirm-payment`, {
+                              confirm: true,
+                            });
+                            await refresh();
+                          });
+                        }}
+                      >
+                        Confirm payment manually
+                      </button>
+                    )}
                     {(o.status === "review_payment" ||
                       o.status === "review_fulfillment" ||
                       o.status.endsWith("_submitted")) && (
