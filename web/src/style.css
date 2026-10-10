@@ -353,14 +353,21 @@ nav a {
   width: 24px;
   height: 24px;
 }
-.payment-icons li:has(.nock-icon) {
+.payment-icons li:has(.nock-icon),
+.payment-icons li:has(.base-icon) {
   border-radius: 50%;
   background: #fff;
+  overflow: hidden;
+}
+.payment-icons .base-icon {
+  width: 12px;
+  height: 12px;
 }
 .payment-icons .nock-icon {
   width: 18px;
   height: 18px;
   filter: invert(1);
+  border-radius: 50%;
 }
 .checkout .chosen {
   display: flex;

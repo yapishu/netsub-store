@@ -69,15 +69,25 @@ function PaymentIcons({ config }) {
         ]
       : []),
     ["eth", "Ethereum"],
+    ...(config.chains.some((chain) => chain.id === 8453)
+      ? [["base", "Base network"]]
+      : []),
     ...(config.monero?.enabled ? [["xmr", "Monero"]] : []),
     ["usdc", "USDC"],
   ];
   return (
-    <ul className="payment-icons" aria-label="Supported currencies">
+    <ul
+      className="payment-icons"
+      aria-label="Supported currencies and networks"
+    >
       {assets.map(([symbol, name]) => (
         <li key={symbol} title={name}>
           <img
-            className={symbol === "nock" ? "nock-icon" : undefined}
+            className={
+              symbol === "nock" || symbol === "base"
+                ? `${symbol}-icon`
+                : undefined
+            }
             src={`/assets/crypto/${symbol}.${symbol === "nock" ? "png" : "svg"}`}
             alt={name}
             width="24"
