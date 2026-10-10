@@ -378,7 +378,7 @@ function App() {
       </main>
       <footer>
         <a
-          href="https://docs.urbit.org/user-manual/running/booting"
+          href="https://docs.urbit.org/get-on-urbit"
           target="_blank"
           rel="noreferrer"
         >
