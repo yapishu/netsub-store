@@ -63,7 +63,13 @@ try {
   await page.getByRole("button", { name: "Random · $5", exact: true }).click();
   await page.getByText("Random standard planet", { exact: true }).waitFor();
   assert.equal(await page.getByLabel(/^Currency/).inputValue(), "USDC");
-  assert.ok(await page.getByLabel(/^Currency/).isDisabled());
+  assert.equal(await page.getByLabel(/^Currency/).isDisabled(), false);
+  await page.getByLabel(/^Currency/).selectOption("ETH");
+  await page.getByRole("img", { name: "Ethereum", exact: true }).waitFor();
+  assert.match(await page.locator(".total").innerText(), /\$5\s+USD/);
+  await page.getByLabel(/^Network/).selectOption("1");
+  await page.getByLabel(/^Network/).selectOption("8453");
+  await page.getByLabel(/^Currency/).selectOption("USDC");
   await page.getByRole("button", { name: /sampel-palnet/ }).click();
   await page.getByLabel("Delivery email").fill("test@example.com");
   assert.ok(
@@ -227,9 +233,18 @@ try {
   await page.route("**/api/auth/challenge", (route) =>
     route.fulfill({ json: { id: "test", message: "Sign in test" } }),
   );
-  await page.route("**/api/auth/login", (route) =>
-    route.fulfill({ json: { wallet, csrf: "test" } }),
+  let loggedIn = false;
+  await page.route("**/api/auth/session", (route) =>
+    route.fulfill(
+      loggedIn
+        ? { json: { wallet, csrf: "test" } }
+        : { status: 401, json: { error: "Sign in required" } },
+    ),
   );
+  await page.route("**/api/auth/login", (route) => {
+    loggedIn = true;
+    return route.fulfill({ json: { wallet, csrf: "test" } });
+  });
   await page.route("**/api/orders", (route) => {
     assert.equal(route.request().method(), "GET");
     return route.fulfill({ json: [] });

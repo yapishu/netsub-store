@@ -316,8 +316,8 @@ func (s *Server) createOrder(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "Unsupported payment option")
 		return
 	}
-	if in.Random && (in.Planet != "" || in.Asset == "ETH") {
-		fail(w, 400, "Random planets cost $5; select an available currency other than ETH without a name")
+	if in.Random && in.Planet != "" {
+		fail(w, 400, "Random planets cost $5; leave the planet name empty")
 		return
 	}
 	s.checkoutMu.Lock()

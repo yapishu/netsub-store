@@ -53,10 +53,10 @@ function Sigil({ name, size = 72, tier = "standard" }) {
   }, [name, size, tier]);
   return <urbit-sigil ref={ref} role="img" aria-label={`Sigil of ${name}`} />;
 }
-function PaymentIcons({ config, random }) {
+function PaymentIcons({ config }) {
   const assets = [
     ["usdc", "USDC"],
-    ...(!random ? [["eth", "Ethereum"]] : []),
+    ["eth", "Ethereum"],
     ...(config.bitcoin?.enabled ? [["btc", "Bitcoin"]] : []),
     ...(config.monero?.enabled ? [["xmr", "Monero"]] : []),
     ...(config.nockchain?.enabled || config.baseNock?.enabled
@@ -155,6 +155,7 @@ function App() {
     return () => provider.removeListener?.("accountsChanged", changed);
   }, [provider, session]);
   async function connect(mobile) {
+    setWalletModal(false);
     await run(async () => {
       let p = window.ethereum;
       if (mobile) {
@@ -196,8 +197,27 @@ function App() {
         params: [message, accounts[0]],
       });
       const login = await api("/auth/login", { challenge: c.id, signature });
+      let verified;
+      try {
+        verified = await api("/auth/session");
+      } catch (error) {
+        if (error.status === 401) {
+          throw new Error(
+            "Your wallet signature was accepted, but the browser session could not be verified. Check that cookies are allowed and the final reverse proxy forwards the public hostname.",
+          );
+        }
+        throw error;
+      }
+      if (
+        verified.wallet?.toLowerCase() !== login.wallet?.toLowerCase() ||
+        !!verified.admin !== !!login.admin
+      ) {
+        throw new Error(
+          "The wallet session changed during sign-in. Please reconnect your wallet.",
+        );
+      }
       setProvider(p);
-      setSession(login);
+      setSession(verified);
       setWalletModal(false);
     });
   }
@@ -619,7 +639,7 @@ function Storefront({
                 Close
               </button>
             </div>
-            <PaymentIcons config={config} random={selected.random} />
+            <PaymentIcons config={config} />
             {current ? (
               <>
                 <div className="chosen">
@@ -681,18 +701,11 @@ function Storefront({
                   <label>
                     Currency
                     <select
-                      disabled={
-                        selected.random &&
-                        !config.bitcoin?.enabled &&
-                        !config.monero?.enabled &&
-                        !config.nockchain?.enabled &&
-                        !config.baseNock?.enabled
-                      }
                       value={asset}
                       onChange={(e) => setAsset(e.target.value)}
                     >
                       <option>USDC</option>
-                      {!selected.random && <option>ETH</option>}
+                      <option>ETH</option>
                       {config.bitcoin?.enabled && <option>BTC</option>}
                       {config.monero?.enabled && <option>XMR</option>}
                       {config.nockchain?.enabled && <option>NOCK</option>}

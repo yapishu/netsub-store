@@ -62,7 +62,7 @@ func TestRandomCheckoutUsesOnlyStandardAndReservesOnce(t *testing.T) {
 		b, _ := json.Marshal(list)
 		return tx.Bucket([]byte("inventory")).Put([]byte("list"), b)
 	})
-	for _, body := range []string{`{"random":true,"planet":"~sampel-sampel","email":"buyer@example.com","chainId":8453,"asset":"USDC"}`, `{"random":true,"email":"buyer@example.com","chainId":8453,"asset":"ETH"}`} {
+	for _, body := range []string{`{"random":true,"planet":"~sampel-sampel","email":"buyer@example.com","chainId":8453,"asset":"USDC"}`} {
 		if w := request(s, "POST", "/api/orders", body, "buyer"); w.Code != 400 {
 			t.Fatal(w.Code, w.Body.String())
 		}
@@ -426,5 +426,27 @@ func TestNameAndSigilPricesAcrossCurrencies(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestRandomETHCheckoutUsesLiveUSDRate(t *testing.T) {
+	for _, chain := range []int{1, 8453} {
+		t.Run(fmt.Sprint(chain), func(t *testing.T) {
+			s := testServer(t)
+			w := request(s, "POST", "/api/orders", fmt.Sprintf(`{"random":true,"email":"buyer@example.com","chainId":%d,"asset":"ETH"}`, chain), "buyer")
+			if w.Code != 200 {
+				t.Fatal(w.Code, w.Body.String())
+			}
+			var o Order
+			if err := json.Unmarshal(w.Body.Bytes(), &o); err != nil {
+				t.Fatal(err)
+			}
+			if !o.Random || o.Tier != "standard" || o.Asset != "ETH" || o.ChainID != chain || o.Amount != "2000000000000000" || o.ETHRate != "2500" {
+				t.Fatal(o.Amount, o.ETHRate, o.Tier, o.Random)
+			}
+			if saved := readOrder(t, s, o.ID); saved.Amount != o.Amount {
+				t.Fatal("quote not persisted")
+			}
+		})
 	}
 }

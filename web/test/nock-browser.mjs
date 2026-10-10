@@ -41,9 +41,18 @@ try {
   await page.route("**/api/auth/challenge", (route) =>
     route.fulfill({ json: { id: "test", message: "Test sign-in" } }),
   );
-  await page.route("**/api/auth/login", (route) =>
-    route.fulfill({ json: { wallet, csrf: "test" } }),
+  let loggedIn = false;
+  await page.route("**/api/auth/session", (route) =>
+    route.fulfill(
+      loggedIn
+        ? { json: { wallet, csrf: "test" } }
+        : { status: 401, json: { error: "Sign in required" } },
+    ),
   );
+  await page.route("**/api/auth/login", (route) => {
+    loggedIn = true;
+    return route.fulfill({ json: { wallet, csrf: "test" } });
+  });
   let order = null;
   await page.route("**/api/orders", (route) => {
     if (route.request().method() === "POST") {

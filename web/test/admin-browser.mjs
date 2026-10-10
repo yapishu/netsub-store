@@ -18,8 +18,14 @@ try {
         json: { ...config, adminLogin: { wallet: true } },
       }),
     );
+    let loggedIn = false;
+    let rejectSession = true;
     await page.route("**/api/auth/session", (r) =>
-      r.fulfill({ status: 401, json: { error: "Sign in required" } }),
+      r.fulfill(
+        loggedIn && !rejectSession
+          ? { json: { wallet: admin, admin: true, csrf: "synthetic" } }
+          : { status: 401, json: { error: "Sign in required" } },
+      ),
     );
     await page.route("**/api/auth/challenge", (r) => {
       const body = r.request().postDataJSON();
@@ -33,6 +39,7 @@ try {
       });
     });
     await page.route("**/api/auth/login", (r) => {
+      loggedIn = true;
       assert.deepEqual(r.request().postDataJSON(), {
         challenge: "admin-challenge",
         signature: "signed-admin-message",
@@ -129,6 +136,24 @@ try {
       path: `../.impeccable/review/admin-wallet-${width}.png`,
       fullPage: true,
     });
+    await page
+      .getByRole("button", { name: "Sign in with wallet", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "Browser wallet", exact: true })
+      .click();
+    await page
+      .getByRole("alert")
+      .filter({ hasText: "wallet signature was accepted" })
+      .waitFor();
+    assert.equal(
+      await page
+        .getByRole("heading", { name: "Store settings", exact: true })
+        .count(),
+      0,
+    );
+    assert.equal(await page.getByRole("dialog").count(), 0);
+    rejectSession = false;
     await page
       .getByRole("button", { name: "Sign in with wallet", exact: true })
       .click();
