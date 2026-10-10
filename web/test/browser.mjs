@@ -41,15 +41,15 @@ try {
   );
   assert.match(
     await page.getByRole("button", { name: /sorreg-namtyv/ }).innerText(),
-    /25 USDC\s+unique/i,
+    /\$25 USD\s+unique/i,
   );
   assert.match(
     await page.getByRole("button", { name: /sampel-sampel/ }).innerText(),
-    /30 USDC\s+premium/i,
+    /\$30 USD\s+premium/i,
   );
   assert.match(
     await page.getByRole("button", { name: /daplen-liswyd/ }).innerText(),
-    /35 USDC\s+name \+ sigil/i,
+    /\$35 USD\s+name \+ sigil/i,
   );
   await page.screenshot({ path: captures + "desktop.png", fullPage: true });
   assert.equal(await page.locator(".checkout").count(), 0);

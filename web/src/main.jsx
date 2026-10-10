@@ -55,10 +55,7 @@ function Sigil({ name, size = 72, tier = "standard" }) {
 }
 function PaymentIcons({ config }) {
   const assets = [
-    ["usdc", "USDC"],
-    ["eth", "Ethereum"],
     ...(config.bitcoin?.enabled ? [["btc", "Bitcoin"]] : []),
-    ...(config.monero?.enabled ? [["xmr", "Monero"]] : []),
     ...(config.nockchain?.enabled || config.baseNock?.enabled
       ? [
           [
@@ -71,6 +68,9 @@ function PaymentIcons({ config }) {
           ],
         ]
       : []),
+    ["eth", "Ethereum"],
+    ...(config.monero?.enabled ? [["xmr", "Monero"]] : []),
+    ["usdc", "USDC"],
   ];
   return (
     <ul className="payment-icons" aria-label="Supported currencies">
@@ -555,9 +555,12 @@ function Storefront({
     <section className="catalog" id="planets">
       <div className="section-heading catalog-heading">
         <h1>Urbit planets</h1>
-        <span className="stock">
-          {config.star} · {total.toLocaleString()} available
-        </span>
+        <div className="catalog-summary">
+          <span className="stock">
+            {config.star} · {total.toLocaleString()} available
+          </span>
+          <PaymentIcons config={config} />
+        </div>
       </div>
       <div className={"store-grid" + (selected ? " has-selection" : "")}>
         <div className="catalog-list">
@@ -618,7 +621,7 @@ function Storefront({
                 <Sigil name={p.name} size={64} tier={p.tier} />
                 <span className="planet-name">{p.name}</span>
                 <span className="planet-price">
-                  {planetPrice(p)} USDC
+                  ${planetPrice(p)} USD
                   {p.tier !== "standard" && (
                     <span className="tier-label">
                       {p.nameAndSigil ? "name + sigil" : p.tier}
@@ -669,7 +672,6 @@ function Storefront({
                 Close
               </button>
             </div>
-            <PaymentIcons config={config} />
             {current ? (
               <>
                 <div className="chosen">

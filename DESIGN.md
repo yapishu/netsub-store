@@ -130,7 +130,7 @@ Tier filters use text buttons with an active underline. Catalog items stack the 
 
 ### Brand and payment marks
 
-The header wordmark reads `networked subject_`, with the trailing underscore in the brand accent. Checkout shows a row of (24px) white circular currency marks below its heading, with (10px) gaps. Marks reflect configured payment availability and have accessible currency names. Bitcoin, Ethereum, USDC, and Monero marks come from the CC0 cryptocurrency-icons set; the Nockchain mark comes from the project’s official site.
+The header wordmark reads `networked subject_`, with the trailing underscore in the brand accent. The catalog shows USD prices and a row of (24px) white circular currency marks beneath the star and availability count, with (10px) gaps. The summary aligns right on desktop and left on mobile. Marks reflect configured payment availability and have accessible currency names. Bitcoin, Ethereum, USDC, and Monero marks come from the CC0 cryptocurrency-icons set; the Nockchain mark comes from the project’s official site.
 
 ### Focus and motion
 
