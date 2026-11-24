@@ -54,7 +54,7 @@ func TestMnemonicEnvironment(t *testing.T) {
 		"DATA_ENCRYPTION_KEY":  strings.Repeat("1", 64),
 		"ADMIN_WALLET_ADDRESS": buyer,
 		"SPAWN_PRIVATE_KEY":    "", "SPAWN_MNEMONIC": testMnemonic, "SPAWN_MNEMONIC_PASSPHRASE": "",
-		"SENDGRID_API_KEY": "test-key", "EMAIL_FROM": "store@example.com",
+		"CLOUDFLARE_ACCOUNT_ID": strings.Repeat("a", 32), "CLOUDFLARE_EMAIL_API_TOKEN": "test-key", "EMAIL_FROM": "store@example.com",
 		"ETH_RPC_URL": "https://eth.example", "BASE_RPC_URL": "https://base.example",
 	} {
 		t.Setenv(k, v)

@@ -296,8 +296,7 @@ func (s *Server) email(ctx context.Context, o Order) {
 		return
 	}
 	text := deliveryText(c.Planet, c.Code, c.URL, s.cfg.Origin)
-	payload := map[string]any{"personalizations": []any{map[string]any{"to": []any{map[string]string{"email": o.Email}}}}, "from": map[string]string{"email": s.cfg.EmailFrom, "name": "Networked Subject"}, "subject": "Your planet code for " + c.Planet, "content": []any{map[string]string{"type": "text/plain", "value": text}}, "tracking_settings": map[string]any{"click_tracking": map[string]bool{"enable": false, "enable_text": false}, "open_tracking": map[string]bool{"enable": false}}}
-	if err := s.sendMail(ctx, payload); err == nil {
+	if err := s.sendMail(ctx, o.Email, "Your planet code for "+c.Planet, text); err == nil {
 		o.EmailSent = true
 		o.Error = ""
 	} else {
@@ -308,27 +307,39 @@ func (s *Server) email(ctx context.Context, o Order) {
 	}
 }
 
-func (s *Server) sendMail(ctx context.Context, payload map[string]any) error {
+func (s *Server) sendMail(ctx context.Context, to, subject, text string) error {
+	payload := map[string]any{"from": map[string]string{"address": s.cfg.EmailFrom, "name": "Networked Subject"}, "to": to, "subject": subject, "text": text}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return errors.New("Cannot prepare email")
 	}
-	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.sendgrid.com/v3/mail/send", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.cloudflare.com/client/v4/accounts/"+s.cfg.CloudflareAccountID+"/email/sending/send", bytes.NewReader(body))
 	if err != nil {
 		return errors.New("Cannot prepare email")
 	}
-	req.Header.Set("Authorization", "Bearer "+s.cfg.SendGridKey)
+	req.Header.Set("Authorization", "Bearer "+s.cfg.CloudflareEmailToken)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := s.http.Do(req)
 	if err != nil {
 		return errors.New("Email provider unavailable")
 	}
 	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-	if resp.StatusCode != 202 {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("Email delivery failed (HTTP %d)", resp.StatusCode)
 	}
-	return nil
+	var reply struct {
+		Success bool
+		Result  struct{ Delivered, Queued []string }
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 65536)).Decode(&reply); err != nil || !reply.Success {
+		return errors.New("Email provider did not confirm acceptance")
+	}
+	for _, address := range append(reply.Result.Delivered, reply.Result.Queued...) {
+		if strings.EqualFold(address, to) {
+			return nil
+		}
+	}
+	return errors.New("Email provider did not accept the recipient")
 }
 
 func deliveryText(planet, code, url, origin string) string {

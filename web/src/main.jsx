@@ -1145,7 +1145,7 @@ function Admin({ session, setSession, run, busy, config, connect }) {
           <span>delivered orders</span>
         </div>
         <div>
-          <b>{data.sendgridConfigured ? "Connected" : "Not configured"}</b>
+          <b>{data.emailConfigured ? "Configured" : "Not configured"}</b>
           <span>Email delivery</span>
         </div>
       </div>
@@ -1594,12 +1594,12 @@ function EmailTest({ data, run, busy }) {
             <pre className="email-preview">{preview.text}</pre>
           </details>
         )}
-        <button disabled={busy || !data.sendgridConfigured || data.demo}>
+        <button disabled={busy || !data.emailConfigured || data.demo}>
           Send test email
         </button>
-        {(!data.sendgridConfigured || data.demo) && (
+        {(!data.emailConfigured || data.demo) && (
           <p className="caption">
-            Email sending requires a live store with SendGrid configured.
+            Email sending requires a live store with Cloudflare configured.
           </p>
         )}
         {status && <p role="status">{status}</p>}

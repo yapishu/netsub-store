@@ -392,27 +392,28 @@ func TestAmbiguousSpawnIsNotResubmitted(t *testing.T) {
 type roundTrip func(*http.Request) (*http.Response, error)
 
 func (f roundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
-func TestSendGridDelivery(t *testing.T) {
+func TestCloudflareDelivery(t *testing.T) {
 	s := testServer(t)
 	o := create(t, s, "~sampel-palnet")
 	o.Status = "delivered"
 	o.Secret, _ = encrypt(s.cfg.EncryptionKey, o.ID, types.PlanetCode{Planet: o.Planet, Code: "private-planet-code", URL: "https://bridge.urbit.org/#private-planet-code"})
 	_ = s.save(o)
-	s.cfg.SendGridKey = "test-api-key"
+	s.cfg.CloudflareAccountID = "test-account"
+	s.cfg.CloudflareEmailToken = "test-api-key"
 	s.cfg.EmailFrom = "store@example.com"
 	s.http = &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
-		if r.URL.String() != "https://api.sendgrid.com/v3/mail/send" || r.Header.Get("Authorization") != "Bearer test-api-key" {
-			t.Fatal("bad SendGrid request")
+		if r.URL.String() != "https://api.cloudflare.com/client/v4/accounts/test-account/email/sending/send" || r.Header.Get("Authorization") != "Bearer test-api-key" {
+			t.Fatal("bad Cloudflare request")
 		}
 		b, _ := io.ReadAll(r.Body)
 		var data map[string]any
 		if e := json.Unmarshal(b, &data); e != nil {
 			t.Fatal(e)
 		}
-		if !strings.Contains(string(b), "private-planet-code") || !strings.Contains(string(b), "https://bridge.urbit.org/#private-planet-code") || data["attachments"] != nil || strings.Contains(string(b), "Master ticket (ownership secret)") {
+		if data["to"] != o.Email || data["bcc"] != nil || data["cc"] != nil || !strings.Contains(string(b), "private-planet-code") || !strings.Contains(string(b), "https://bridge.urbit.org/#private-planet-code") || data["attachments"] != nil || strings.Contains(string(b), "Master ticket (ownership secret)") {
 			t.Fatal("incorrect planet code email")
 		}
-		return &http.Response{StatusCode: 202, Body: io.NopCloser(strings.NewReader(""))}, nil
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"success":true,"result":{"queued":["buyer@example.com"]}}`))}, nil
 	})}
 	s.email(context.Background(), o)
 	if !readOrder(t, s, o.ID).EmailSent {

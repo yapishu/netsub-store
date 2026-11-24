@@ -172,28 +172,35 @@ func TestReceiptRecipientsRetryAndAuditRedaction(t *testing.T) {
 	s.http = &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
 		attempt++
 		saved := readOrder(t, s, o.ID)
-		if saved.ReceiptAttempts != attempt || saved.ReceiptNext.IsZero() {
+		expectedAttempt := 1
+		expectedRecipient := s.cfg.ReceiptTo
+		if attempt == 1 {
+			expectedRecipient = o.Email
+		}
+		if attempt == 3 {
+			expectedAttempt = 2
+		}
+		if saved.ReceiptAttempts != expectedAttempt || saved.ReceiptNext.IsZero() {
 			t.Fatal("attempt not durable before send")
 		}
 		b, _ := io.ReadAll(r.Body)
 		var payload struct {
-			Personalizations []struct{ To []struct{ Email string } }
-			Attachments      any
+			To          string
+			Attachments any
 		}
 		if err := json.Unmarshal(b, &payload); err != nil {
 			t.Fatal(err)
 		}
-		if len(payload.Personalizations) != 2 || payload.Personalizations[0].To[0].Email != o.Email || payload.Personalizations[1].To[0].Email != "matwet@subject.network" || payload.Attachments != nil {
+		if payload.To != expectedRecipient || payload.Attachments != nil {
 			t.Fatal(string(b))
 		}
 		if strings.Contains(string(b), o.Secret) || !strings.Contains(string(b), "10 USDC") || !strings.Contains(string(b), hash) {
 			t.Fatal("incorrect receipt")
 		}
-		status := 202
-		if attempt == 1 {
-			status = 503
+		if attempt == 2 {
+			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"success":true,"result":{"permanent_bounces":["matwet@subject.network"]}}`))}, nil
 		}
-		return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader("provider-sensitive-response"))}, nil
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(fmt.Sprintf(`{"success":true,"result":{"queued":[%q]}}`, payload.To)))}, nil
 	})}
 	s.receipt(context.Background(), o)
 	failed := readOrder(t, s, o.ID)
@@ -202,7 +209,7 @@ func TestReceiptRecipientsRetryAndAuditRedaction(t *testing.T) {
 	}
 	s.receipt(context.Background(), failed)
 	done := readOrder(t, s, o.ID)
-	if !done.ReceiptSent || done.ReceiptError != "" || done.ReceiptAttempts != 2 {
+	if attempt != 3 || !done.ReceiptSent || done.ReceiptError != "" || done.ReceiptAttempts != 2 {
 		t.Fatal(done)
 	}
 	request(s, "POST", "/api/orders", `{"email":"body-secret"}`, "buyer")

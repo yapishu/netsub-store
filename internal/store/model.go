@@ -25,13 +25,13 @@ import (
 )
 
 type Config struct {
-	Nock                                                                                                                                      NockConfig
-	Monero                                                                                                                                    MoneroConfig
-	Bitcoin                                                                                                                                   BitcoinConfig
-	Listen, Origin, DBPath, WebDir, Star, SpawnKey, CoinGeckoKey, AdminWallet, SendGridKey, EmailFrom, WalletConnectID, GonetiaDir, ReceiptTo string
-	EncryptionKey                                                                                                                             []byte
-	Chains                                                                                                                                    map[int]Chain
-	Demo                                                                                                                                      bool
+	Nock                                                                                                                                                                    NockConfig
+	Monero                                                                                                                                                                  MoneroConfig
+	Bitcoin                                                                                                                                                                 BitcoinConfig
+	Listen, Origin, DBPath, WebDir, Star, SpawnKey, CoinGeckoKey, AdminWallet, CloudflareAccountID, CloudflareEmailToken, EmailFrom, WalletConnectID, GonetiaDir, ReceiptTo string
+	EncryptionKey                                                                                                                                                           []byte
+	Chains                                                                                                                                                                  map[int]Chain
+	Demo                                                                                                                                                                    bool
 }
 type Chain struct {
 	ID            int    `json:"id"`
@@ -43,7 +43,7 @@ type Chain struct {
 }
 
 func FromEnv() (Config, error) {
-	c := Config{Listen: env("LISTEN", "127.0.0.1:8080"), Origin: env("PUBLIC_ORIGIN", "http://localhost:8080"), DBPath: env("DB_PATH", "data/store.db"), WebDir: env("WEB_DIR", "web/dist"), Star: os.Getenv("STAR"), SpawnKey: strings.TrimPrefix(os.Getenv("SPAWN_PRIVATE_KEY"), "0x"), CoinGeckoKey: os.Getenv("COINGECKO_DEMO_API_KEY"), AdminWallet: strings.TrimSpace(os.Getenv("ADMIN_WALLET_ADDRESS")), SendGridKey: os.Getenv("SENDGRID_API_KEY"), EmailFrom: os.Getenv("EMAIL_FROM"), WalletConnectID: os.Getenv("WALLETCONNECT_PROJECT_ID"), GonetiaDir: os.Getenv("GONETIA_DIR"), ReceiptTo: env("RECEIPT_EMAIL", "matwet@subject.network"), Demo: os.Getenv("DEMO") == "true"}
+	c := Config{Listen: env("LISTEN", "127.0.0.1:8080"), Origin: env("PUBLIC_ORIGIN", "http://localhost:8080"), DBPath: env("DB_PATH", "data/store.db"), WebDir: env("WEB_DIR", "web/dist"), Star: os.Getenv("STAR"), SpawnKey: strings.TrimPrefix(os.Getenv("SPAWN_PRIVATE_KEY"), "0x"), CoinGeckoKey: os.Getenv("COINGECKO_DEMO_API_KEY"), AdminWallet: strings.TrimSpace(os.Getenv("ADMIN_WALLET_ADDRESS")), CloudflareAccountID: os.Getenv("CLOUDFLARE_ACCOUNT_ID"), CloudflareEmailToken: os.Getenv("CLOUDFLARE_EMAIL_API_TOKEN"), EmailFrom: os.Getenv("EMAIL_FROM"), WalletConnectID: os.Getenv("WALLETCONNECT_PROJECT_ID"), GonetiaDir: os.Getenv("GONETIA_DIR"), ReceiptTo: env("RECEIPT_EMAIL", "matwet@subject.network"), Demo: os.Getenv("DEMO") == "true"}
 	var err error
 	c.Bitcoin, err = bitcoinFromEnv()
 	if err != nil {
@@ -95,8 +95,12 @@ func FromEnv() (Config, error) {
 	if err != nil {
 		return c, err
 	}
-	if _, err := mail.ParseAddress(c.EmailFrom); err != nil || c.SendGridKey == "" {
-		return c, errors.New("SENDGRID_API_KEY and EMAIL_FROM are required")
+	accountID, err := hex.DecodeString(c.CloudflareAccountID)
+	if err != nil || len(accountID) != 16 || c.CloudflareEmailToken == "" {
+		return c, errors.New("CLOUDFLARE_ACCOUNT_ID (32 hex characters) and CLOUDFLARE_EMAIL_API_TOKEN are required")
+	}
+	if sender, err := mail.ParseAddress(c.EmailFrom); err != nil || sender.Address != c.EmailFrom {
+		return c, errors.New("EMAIL_FROM must be an email address")
 	}
 	if receipt, err := mail.ParseAddress(c.ReceiptTo); err != nil || receipt.Address != c.ReceiptTo {
 		return c, errors.New("RECEIPT_EMAIL must be an email address")
@@ -199,6 +203,7 @@ type Order struct {
 	ReceiptSent          bool      `json:"receiptSent"`
 	PaymentConfirmedBy   string    `json:"paymentConfirmedBy,omitempty"`
 	ReceiptError         string    `json:"receiptError,omitempty"`
+	ReceiptAccepted      []string  `json:"-"`
 	ReceiptAttempts      int       `json:"-"`
 	ReceiptNext          time.Time `json:"-"`
 }
@@ -218,12 +223,13 @@ type storedOrder struct {
 	StageAt         time.Time
 	EmailAttempts   int
 	EmailNext       time.Time
+	ReceiptAccepted []string `json:",omitempty"`
 	ReceiptAttempts int
 	ReceiptNext     time.Time
 }
 
 func putOrder(tx *bolt.Tx, o Order) error {
-	b, e := json.Marshal(storedOrder{Order: o, NockLockRoot: o.NockLockRoot, NockKeyID: o.NockKeyID, NockIndex: o.NockIndex, MoneroAccount: o.MoneroAccount, MoneroIndex: o.MoneroIndex, MoneroSeen: o.MoneroSeen, Secret: o.Secret, NextCheck: o.NextCheck, Checks: o.Checks, StageAt: o.StageAt, EmailAttempts: o.EmailAttempts, EmailNext: o.EmailNext, ReceiptAttempts: o.ReceiptAttempts, ReceiptNext: o.ReceiptNext})
+	b, e := json.Marshal(storedOrder{Order: o, NockLockRoot: o.NockLockRoot, NockKeyID: o.NockKeyID, NockIndex: o.NockIndex, MoneroAccount: o.MoneroAccount, MoneroIndex: o.MoneroIndex, MoneroSeen: o.MoneroSeen, Secret: o.Secret, NextCheck: o.NextCheck, Checks: o.Checks, StageAt: o.StageAt, EmailAttempts: o.EmailAttempts, EmailNext: o.EmailNext, ReceiptAttempts: o.ReceiptAttempts, ReceiptNext: o.ReceiptNext, ReceiptAccepted: o.ReceiptAccepted})
 	if e != nil {
 		return e
 	}
@@ -262,6 +268,7 @@ func decodeOrder(b []byte) (Order, error) {
 	s.Order.EmailAttempts = s.EmailAttempts
 	s.Order.EmailNext = s.EmailNext
 	s.Order.ReceiptAttempts = s.ReceiptAttempts
+	s.Order.ReceiptAccepted = s.ReceiptAccepted
 	s.Order.ReceiptNext = s.ReceiptNext
 	return s.Order, e
 }

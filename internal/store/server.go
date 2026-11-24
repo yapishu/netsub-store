@@ -669,7 +669,7 @@ func (s *Server) admin(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "Cannot read name categories")
 		return
 	}
-	respond(w, map[string]any{"categories": counts, "pendingSpawns": pendingSpawns, "receiptEmail": s.cfg.ReceiptTo, "emailFrom": s.cfg.EmailFrom, "settings": cfg, "orders": orders, "available": count, "inventoryUpdated": updated, "demo": s.cfg.Demo, "sendgridConfigured": s.cfg.SendGridKey != "", "rarityConfigured": s.cfg.GonetiaDir != ""})
+	respond(w, map[string]any{"categories": counts, "pendingSpawns": pendingSpawns, "receiptEmail": s.cfg.ReceiptTo, "emailFrom": s.cfg.EmailFrom, "settings": cfg, "orders": orders, "available": count, "inventoryUpdated": updated, "demo": s.cfg.Demo, "emailConfigured": s.cfg.CloudflareEmailToken != "" && s.cfg.CloudflareAccountID != "", "rarityConfigured": s.cfg.GonetiaDir != ""})
 }
 func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {
 	var cfg Settings

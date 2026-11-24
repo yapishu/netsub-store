@@ -1,6 +1,6 @@
 # Networked Subject planet store
 
-A Go service and bundled React checkout for selling Urbit L2 planet codes redeemable on Bridge. It uses the Perigee library, browser wallets and WalletConnect, ETH/USDC payments on Ethereum or Base, gonetia name categories, and SendGrid delivery. Optional Bitcoin and Monero payments use wallet RPC services. Native NOCK uses a dedicated public receiving branch; $NOCK on Base uses the connected EVM wallet. See [NOCK payment setup](docs/nock-payments.md).
+A Go service and bundled React checkout for selling Urbit L2 planet codes redeemable on Bridge. It uses the Perigee library, browser wallets and WalletConnect, ETH/USDC payments on Ethereum or Base, gonetia name categories, and Cloudflare delivery. Optional Bitcoin and Monero payments use wallet RPC services. Native NOCK uses a dedicated public receiving branch; $NOCK on Base uses the connected EVM wallet. See [NOCK payment setup](docs/nock-payments.md).
 
 The storefront follows Networked Subject’s charcoal palette and JetBrains Mono typography. `/admin` controls availability, payment recipient, standard, rare, unique, and premium prices, category tiers, inventory refresh, receipts, activity history, and order recovery.
 
@@ -25,6 +25,8 @@ Set `ADMIN_WALLET_ADDRESS` to the public EVM wallet allowed to administer the st
 
 ## Configuration
 
+Onboard the domain used by `EMAIL_FROM` under Cloudflare Email Service → Email Sending. Sending to customer addresses requires Workers Paid. The store connects to the Cloudflare API over outbound HTTPS. [Cloudflare Email Sending setup](https://developers.cloudflare.com/email-service/get-started/send-emails/)
+
 | Variable                       | Purpose                                                                                                                                                                                                                  |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `PUBLIC_ORIGIN`                | Exact HTTPS origin for authentication and CSRF validation. HTTP is allowed only on localhost.                                                                                                                            |
@@ -37,9 +39,10 @@ Set `ADMIN_WALLET_ADDRESS` to the public EVM wallet allowed to administer the st
 | `ETH_CONFIRMATIONS` | Ethereum confirmation depth, including the transaction block; default 20. |
 | `BASE_CONFIRMATIONS` | Base confirmation depth, including the transaction block; default 180. |
 | `COINGECKO_DEMO_API_KEY` | Optional Demo key for market prices; empty uses the keyless endpoint. |
-| `SENDGRID_API_KEY`             | SendGrid key with Mail Send permission.                                                                                                                                                                                  |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account ID for the sending domain. |
+| `CLOUDFLARE_EMAIL_API_TOKEN` | Cloudflare API token with Email Sending: Edit permission. |
 | `RECEIPT_EMAIL` | Receipt-copy destination; defaults to `matwet@subject.network`. Receives no planet codes. |
-| `EMAIL_FROM`                   | Verified SendGrid sender email address.                                                                                                                                                                                  |
+| `EMAIL_FROM`                   | Sender address on a domain onboarded for Cloudflare Email Sending.                                                                                                                                                                                  |
 | `WALLETCONNECT_PROJECT_ID`     | Reown project ID for mobile wallet QR/deep-link pairing. Without it, injected browser wallets and mobile wallet browsers work. Allow your domain in the project dashboard.                                               |
 | `ETH_RPC_URL`, `BASE_RPC_URL`  | Chain RPC endpoints. Verification checks the reported chain ID and configured confirmation depth.                                                                                                   |
 | `ETHERSCAN_API_KEY`            | Etherscan V2 key for chains without a configured RPC. The selected plan must support Ethereum and Base proxy endpoints.                                                                                                  |
@@ -61,7 +64,7 @@ Local wallet login also works at `http://localhost:<port>` and `http://127.0.0.1
 5. Verification checks sender, recipient, exact amount, transaction success, canonical block, block timestamp within the quote, and the actual token contract and transfer log. RPC and Etherscan verification both wait for `ETH_CONFIRMATIONS` (default 20) or `BASE_CONFIRMATIONS` (default 180); confirmation depth is **not** proof of rollup settlement.
 6. The verified payment is consumed atomically once. Perigee generates a Bridge planet code and its invite ownership address. The store encrypts the code before submitting a spawn, then completes the ownership handoff to the invite wallet and verifies it through the roller.
 7. The buyer can reveal or download the planet code after signing in with the purchasing wallet. The Bridge activation link carries the code in its URL fragment. Codes are returned only by the authenticated `/api/orders/{id}/planet-code` endpoint and are not stored in browser storage.
-8. SendGrid emails the planet code, the Bridge redemption link, and batch-processing instructions. There is no boot-file attachment. Click/open tracking is disabled. Failed emails retry up to six times with backoff; `/admin` can resend. “Email sent” means SendGrid accepted it.
+8. Cloudflare emails the planet code, the Bridge redemption link, and batch-processing instructions. There is no boot-file attachment. Failed emails retry up to six times with backoff; `/admin` can resend. “Email sent” means Cloudflare accepted it.
 
 The planet code is an invitation, not the buyer's master ticket. Bridge derives the invite wallet, creates a fresh master ticket in the buyer's browser, and transfers ownership and management to that new wallet. The store does not generate or receive that final master ticket. A code must remain private until redeemed because anyone holding it can claim the planet. Allow up to one hour for the roller batch before redemption.
 
@@ -109,7 +112,7 @@ The store imports gonetia’s actual outputs rather than reimplementing its clas
 - Rejected payments and exhausted payment checks appear as `review_payment`. The buyer can submit the correct hash; an admin can resume verification. An admin can release an unpaid reservation after the recovery window. Paid reservations cannot be released through this action.
 - Each fulfillment intent is persisted before its outbound call. A crash or timeout can leave an uncertain submission. The worker reconciles invite ownership instead of resubmitting automatically. After 1,440 reconciliation checks, an admin can use **Recheck state** to resume reads. If an operation was never accepted, inspect the roller queue/state and complete that exact operation with Perigee; the worker recognizes the resulting state. Do not blindly repeat a spawn or acceptance.
 - For operator recovery of an interrupted order, stop the store and run `store recover ORDER_ID OUTPUT.json` with the same environment and mounted database. The command writes an owner-only recovery bundle and refuses to overwrite a file. It does not submit transactions. Use the recovered planet code with Bridge or Perigee to complete the outstanding operation, then restart the store to reconcile. Keep this bundle private.
-- Failed SendGrid requests do not block planet-code downloads. A timeout after SendGrid accepts a request can result in a duplicate email on retry.
+- Failed Cloudflare requests do not block planet-code downloads. A timeout after Cloudflare accepts a request can result in a duplicate email on retry.
 - API mutation attempts, rejected requests, order transitions, payment checks, receipt attempts, and planet-code email attempts append to the database activity history and structured container logs. `/admin` provides paginated activity. Compose rotates container logs at 10 MB across five files; database activity persists with the store volume.
 - `/healthz` checks database access. Logs exclude private keys, planet codes, and mail contents. Keep Perigee debug logging disabled in deployment.
 - Stop the service before copying `store.db`; back up the entire named volume. `docker compose down` preserves the volume. Do not use `down -v` against data you intend to retain.
@@ -134,7 +137,7 @@ npm --prefix web run build
 CHROME_PATH=/usr/bin/google-chrome npm --prefix web run test:browser
 ```
 
-The tests cover payment matching and confirmation depth, replay protection, reservation pricing, wallet challenge replay, admin cookie/CSRF/rate limits, encrypted planet-code access, ambiguous submissions, Bridge-compatible planet-code fulfillment against a mock roller, and SendGrid request construction. Browser QA covers desktop/mobile rendering, sigils, rarity filtering, disabled preview checkout, admin pricing, wallet sign-in continuity, mocked Bitcoin/Monero checkout, Bitcoin default selection, tier prices/colors, and planet-code reveal and redemption links. Bitcoin Core integration runs against an isolated regtest wallet; Monero integration uses a view-only wallet on an isolated offline fakechain. Live provider credentials, actual wallet pairing, a real payment, and a real spawn must be checked in the deployment environment.
+The tests cover payment matching and confirmation depth, replay protection, reservation pricing, wallet challenge replay, admin cookie/CSRF/rate limits, encrypted planet-code access, ambiguous submissions, Bridge-compatible planet-code fulfillment against a mock roller, and Cloudflare request construction. Browser QA covers desktop/mobile rendering, sigils, rarity filtering, disabled preview checkout, admin pricing, wallet sign-in continuity, mocked Bitcoin/Monero checkout, Bitcoin default selection, tier prices/colors, and planet-code reveal and redemption links. Bitcoin Core integration runs against an isolated regtest wallet; Monero integration uses a view-only wallet on an isolated offline fakechain. Live provider credentials, actual wallet pairing, a real payment, and a real spawn must be checked in the deployment environment.
 
 ## References
 
@@ -143,7 +146,7 @@ The tests cover payment matching and confirmation depth, replay protection, rese
 - [Urbit sigil-js](https://github.com/urbit/sigil-js)
 - [Etherscan V2 receipts](https://docs.etherscan.io/api-reference/endpoint/ethgettransactionreceipt)
 - [Circle USDC contract addresses](https://developers.circle.com/stablecoins/usdc-contract-addresses)
-- [SendGrid Mail Send](https://www.twilio.com/docs/sendgrid/api-reference/mail-send/mail-send)
+- [Cloudflare Mail Send](https://developers.cloudflare.com/email-service/get-started/send-emails/)
 
 ## Market quotes and email tests
 
@@ -151,7 +154,7 @@ Tier prices are in USD. ETH, BTC, and XMR share one batched CoinGecko request, f
 
 CoinGecko's free Demo plan has a monthly request cap. One request every minute continuously would use approximately 43,200 calls in a 30-day month; on-demand fetching reduces idle usage. See [current CoinGecko API plans](https://www.coingecko.com/en/api/pricing).
 
-In `/admin`, **Test email** previews the actual delivery and receipt templates with clearly marked sample data. Enter the recipient, select a template, and click **Send test email**. Success means SendGrid accepted the message; inbox delivery is checked in that mailbox. Test messages use an unusable sample code, send only to the entered address, and do not create orders. Preview mode does not send emails.
+In `/admin`, **Test email** previews the actual delivery and receipt templates with clearly marked sample data. Enter the recipient, select a template, and click **Send test email**. Success means Cloudflare accepted the message; inbox delivery is checked in that mailbox. Test messages use an unusable sample code, send only to the entered address, and do not create orders. Preview mode does not send emails.
 
 Order lists hide unpaid reservations older than two hours by default. **Show older unpaid orders** reveals them; no records are deleted. Orders with payment evidence or requiring review stay visible. Admin displays payment destinations and transaction IDs. **Download payment destinations** exports every order, including hidden orders, with network and wallet derivation details. See [fund recovery](docs/payment-wallets.md#find-and-recover-payments).
 

@@ -10,26 +10,25 @@ import (
 
 func TestEmailPreviewAndSending(t *testing.T) {
 	s := testServer(t)
-	s.cfg.SendGridKey = "test-key"
+	s.cfg.CloudflareAccountID = "test-account"
+	s.cfg.CloudflareEmailToken = "test-key"
 	s.cfg.EmailFrom = "store@example.com"
 	calls := 0
 	s.http = &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
 		calls++
-		if r.URL.String() != "https://api.sendgrid.com/v3/mail/send" || r.Header.Get("Authorization") != "Bearer test-key" {
+		if r.URL.String() != "https://api.cloudflare.com/client/v4/accounts/test-account/email/sending/send" || r.Header.Get("Authorization") != "Bearer test-key" {
 			t.Fatal("incorrect mail request")
 		}
 		var payload struct {
-			Subject          string
-			Content          []struct{ Value string }
-			Personalizations []struct{ To []struct{ Email string } }
+			Subject, Text, To string
 		}
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			t.Fatal(err)
 		}
-		if !strings.HasPrefix(payload.Subject, "[TEST]") || !strings.Contains(payload.Content[0].Value, "TEST EMAIL") || len(payload.Personalizations) != 1 || payload.Personalizations[0].To[0].Email != "test@example.com" {
+		if !strings.HasPrefix(payload.Subject, "[TEST]") || !strings.Contains(payload.Text, "TEST EMAIL") || payload.To != "test@example.com" {
 			t.Fatal("incorrect test email payload")
 		}
-		return &http.Response{StatusCode: 202, Body: io.NopCloser(strings.NewReader(""))}, nil
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"success":true,"result":{"delivered":["test@example.com"]}}`))}, nil
 	})}
 	body := `{"email":"test@example.com","kind":"delivery"}`
 	for _, session := range []string{"", "buyer"} {
@@ -60,7 +59,8 @@ func TestEmailPreviewAndSending(t *testing.T) {
 
 func TestEmailValidationDemoAndProviderFailure(t *testing.T) {
 	s := testServer(t)
-	s.cfg.SendGridKey = "test-key"
+	s.cfg.CloudflareAccountID = "test-account"
+	s.cfg.CloudflareEmailToken = "test-key"
 	for _, body := range []string{`{"email":"bad","kind":"delivery"}`, `{"email":"test@example.com","kind":"unknown"}`} {
 		if request(s, "POST", "/api/admin/test-email", body, "admin").Code != 400 {
 			t.Fatal("invalid email accepted")

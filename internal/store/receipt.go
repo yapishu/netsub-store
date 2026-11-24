@@ -7,6 +7,7 @@ import (
 	nockchain "github.com/yapishu/nockchain-go"
 	"math/big"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -51,23 +52,26 @@ func (s *Server) receipt(ctx context.Context, o Order) {
 		return
 	}
 	text := s.receiptText(o)
-	recipients := []any{map[string]any{"to": []any{map[string]string{"email": o.Email}}}}
+	recipients := []string{o.Email}
 	if !strings.EqualFold(o.Email, s.cfg.ReceiptTo) {
-		recipients = append(recipients, map[string]any{"to": []any{map[string]string{"email": s.cfg.ReceiptTo}}})
+		recipients = append(recipients, s.cfg.ReceiptTo)
 	}
-	payload := map[string]any{
-		"personalizations":  recipients,
-		"from":              map[string]string{"email": s.cfg.EmailFrom, "name": "Networked Subject"},
-		"subject":           "Receipt: " + o.Planet,
-		"content":           []any{map[string]string{"type": "text/plain", "value": text}},
-		"tracking_settings": map[string]any{"click_tracking": map[string]bool{"enable": false, "enable_text": false}, "open_tracking": map[string]bool{"enable": false}},
+	o.ReceiptError = ""
+	for _, recipient := range recipients {
+		if slices.Contains(o.ReceiptAccepted, recipient) {
+			continue
+		}
+		if err := s.sendMail(ctx, recipient, "Receipt: "+o.Planet, text); err != nil {
+			o.ReceiptError = err.Error()
+			continue
+		}
+		o.ReceiptAccepted = append(o.ReceiptAccepted, recipient)
+		if err := s.save(o); err != nil {
+			s.LogError("receipt acceptance save failed", err)
+			return
+		}
 	}
-	if err := s.sendMail(ctx, payload); err != nil {
-		o.ReceiptError = err.Error()
-	} else {
-		o.ReceiptSent = true
-		o.ReceiptError = ""
-	}
+	o.ReceiptSent = o.ReceiptError == ""
 	if err := s.save(o); err != nil {
 		s.LogError("receipt status save failed", err)
 	}
@@ -83,6 +87,9 @@ func (s *Server) retryReceipt(w http.ResponseWriter, r *http.Request) {
 		}
 		if o.PaidAt.IsZero() {
 			return errors.New("Payment has not been verified")
+		}
+		if o.ReceiptSent {
+			o.ReceiptAccepted = nil
 		}
 		o.ReceiptSent = false
 		o.ReceiptAttempts = 0

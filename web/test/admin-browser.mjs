@@ -103,7 +103,7 @@ try {
           ],
           categories: [],
           available: 6,
-          sendgridConfigured: true,
+          emailConfigured: true,
           demo: false,
           receiptEmail: "store@example.com",
           emailFrom: "sender@example.com",
@@ -139,7 +139,7 @@ try {
         kind: "delivery",
       });
       return r.fulfill({
-        json: { message: "SendGrid accepted the test email." },
+        json: { message: "Cloudflare accepted the test email." },
       });
     });
     await page.addInitScript((admin) => {
@@ -230,7 +230,7 @@ try {
       .click();
     await page
       .getByRole("status")
-      .filter({ hasText: "SendGrid accepted" })
+      .filter({ hasText: "Cloudflare accepted" })
       .waitFor();
     await page.screenshot({
       path: `../.impeccable/review/admin-settings-${width}.png`,
