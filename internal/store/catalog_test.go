@@ -55,6 +55,45 @@ func TestCatalogMigrationPreservesPurchases(t *testing.T) {
 	}
 }
 
+func TestPlanetPageCountsAndOffset(t *testing.T) {
+	s := testServer(t)
+	planets := make([]Planet, 52)
+	for i := range planets {
+		planets[i].Name = fmt.Sprintf("planet-%02d", i)
+	}
+	planets[51].Tags = []string{"doubles"}
+	if err := s.db.Update(func(tx *bolt.Tx) error {
+		b, err := json.Marshal(planets)
+		if err != nil {
+			return err
+		}
+		return tx.Bucket([]byte("inventory")).Put([]byte("list"), b)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		query               string
+		total, offset, rows int
+	}{
+		{"filter=all", 52, 0, 48},
+		{"filter=standard&offset=96", 51, 48, 3},
+		{"filter=premium", 1, 0, 1},
+		{"q=missing&offset=48", 0, 0, 0},
+	} {
+		res := request(s, "GET", "/api/planets?"+tc.query, "", "")
+		var page struct {
+			Available, Total, Offset int
+			Planets                  []Planet
+		}
+		if err := json.Unmarshal(res.Body.Bytes(), &page); err != nil {
+			t.Fatal(err)
+		}
+		if res.Code != 200 || page.Available != 52 || page.Total != tc.total || page.Offset != tc.offset || len(page.Planets) != tc.rows {
+			t.Errorf("%s: %s", tc.query, res.Body)
+		}
+	}
+}
+
 func TestRandomCheckoutUsesOnlyStandardAndReservesOnce(t *testing.T) {
 	s := testServer(t)
 	list := []Planet{{Name: "~sampel-palnet"}, {Name: "~sampel-sampel", Tags: []string{"doubles"}}, {Name: "~ravmel-ropdyl", Tags: []string{"any_english"}}}

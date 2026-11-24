@@ -252,27 +252,28 @@ func (s *Server) planets(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "Cannot read inventory")
 		return
 	}
-	q := strings.ToLower(r.URL.Query().Get("q"))
+	q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
 	filter := r.URL.Query().Get("filter")
-	filtered := []Planet{}
+	filtered := planets[:0]
 	for _, p := range planets {
 		if !strings.Contains(p.Name, q) || filter != "" && filter != "all" && p.Tier != filter {
 			continue
 		}
 		filtered = append(filtered, p)
 	}
+	const pageSize = 48
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 	if offset < 0 {
 		offset = 0
 	}
-	if offset > len(filtered) {
-		offset = len(filtered)
+	if offset >= len(filtered) {
+		offset = max(len(filtered)-1, 0) / pageSize * pageSize
 	}
-	end := offset + 48
+	end := offset + pageSize
 	if end > len(filtered) {
 		end = len(filtered)
 	}
-	respond(w, map[string]any{"planets": filtered[offset:end], "total": len(filtered)})
+	respond(w, map[string]any{"planets": filtered[offset:end], "total": len(filtered), "available": len(planets), "offset": offset})
 }
 func (s *Server) createOrder(w http.ResponseWriter, r *http.Request) {
 	v, _ := s.current(r)

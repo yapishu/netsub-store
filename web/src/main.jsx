@@ -460,8 +460,7 @@ function Storefront({
   refresh,
   setShowOrders,
 }) {
-  const [planets, setPlanets] = useState([]),
-    [total, setTotal] = useState(0),
+  const [page, setPage] = useState(null),
     [filter, setFilter] = useState("all"),
     [query, setQuery] = useState(""),
     [offset, setOffset] = useState(0),
@@ -475,16 +474,13 @@ function Storefront({
   useEffect(() => {
     let alive = true;
     setLoading(true);
+    setFetchError("");
     const t = setTimeout(() => {
       api(
         `/planets?q=${encodeURIComponent(query)}&filter=${filter}&offset=${offset}`,
       )
         .then((d) => {
-          if (alive) {
-            setPlanets(d.planets);
-            setTotal(d.total);
-            setFetchError("");
-          }
+          if (alive) setPage(d);
         })
         .catch((e) => alive && setFetchError(e.message))
         .finally(() => alive && setLoading(false));
@@ -494,6 +490,7 @@ function Storefront({
       clearTimeout(t);
     };
   }, [query, filter, offset, orders.length]);
+  const planets = page?.planets ?? [];
   const checkoutRef = useRef(null);
   const selectedButton = useRef(null);
   const previousWallet = useRef(session?.wallet);
@@ -567,7 +564,8 @@ function Storefront({
         <h1>Urbit planets</h1>
         <div className="catalog-summary">
           <span className="stock">
-            {config.star} · {total.toLocaleString()} available
+            {config.star}
+            {page && ` · ${page.available.toLocaleString()} available`}
           </span>
           <PaymentIcons config={config} />
         </div>
@@ -617,57 +615,62 @@ function Storefront({
             className={"planet-grid" + (loading ? " loading-grid" : "")}
             aria-busy={loading}
           >
-            {planets.map((p) => (
-              <button
-                key={p.name}
-                className={`planet ${selected?.name === p.name ? "selected" : ""} ${p.tier}`}
-                onClick={(event) => {
-                  selectedButton.current = event.currentTarget;
-                  setSelected(p);
-                  setOrder(null);
-                }}
-                aria-pressed={selected?.name === p.name}
-              >
-                <Sigil name={p.name} size={64} tier={p.tier} />
-                <span className="planet-name">{p.name}</span>
-                <span className="planet-price">
-                  ${planetPrice(p)} USD
-                  {p.tier !== "standard" && (
-                    <span className="tier-label">
-                      {p.nameAndSigil ? "name + sigil" : p.tier}
-                    </span>
-                  )}
-                </span>
-              </button>
-            ))}
+            {!fetchError &&
+              planets.map((p) => (
+                <button
+                  key={p.name}
+                  disabled={loading}
+                  className={`planet ${selected?.name === p.name ? "selected" : ""} ${p.tier}`}
+                  onClick={(event) => {
+                    selectedButton.current = event.currentTarget;
+                    setSelected(p);
+                    setOrder(null);
+                  }}
+                  aria-pressed={selected?.name === p.name}
+                >
+                  <Sigil name={p.name} size={64} tier={p.tier} />
+                  <span className="planet-name">{p.name}</span>
+                  <span className="planet-price">
+                    ${planetPrice(p)} USD
+                    {p.tier !== "standard" && (
+                      <span className="tier-label">
+                        {p.nameAndSigil ? "name + sigil" : p.tier}
+                      </span>
+                    )}
+                  </span>
+                </button>
+              ))}
           </div>
           {loading && planets.length === 0 && (
             <p className="empty" role="status">
               Loading planets…
             </p>
           )}
-          {!loading && planets.length === 0 && (
+          {!loading && !fetchError && planets.length === 0 && (
             <div className="empty">
               No matching planets. Try another search.
             </div>
           )}
-          <div className="pagination">
-            <button
-              disabled={offset === 0}
-              onClick={() => setOffset(Math.max(0, offset - 48))}
-            >
-              ← Previous
-            </button>
-            <span>
-              {total ? offset + 1 : 0}–{Math.min(offset + 48, total)} / {total}
-            </span>
-            <button
-              disabled={offset + 48 >= total}
-              onClick={() => setOffset(offset + 48)}
-            >
-              Next →
-            </button>
-          </div>
+          {page && !loading && !fetchError && (
+            <div className="pagination">
+              <button
+                disabled={page.offset === 0}
+                onClick={() => setOffset(Math.max(0, page.offset - 48))}
+              >
+                ← Previous
+              </button>
+              <span>
+                {page.total ? page.offset + 1 : 0}–
+                {page.offset + planets.length} / {page.total}
+              </span>
+              <button
+                disabled={page.offset + planets.length >= page.total}
+                onClick={() => setOffset(page.offset + planets.length)}
+              >
+                Next →
+              </button>
+            </div>
+          )}
         </div>
         {selected && (
           <aside

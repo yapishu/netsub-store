@@ -51,6 +51,8 @@ try {
     await page.getByRole("button", { name: /daplen-liswyd/ }).innerText(),
     /\$35 USD\s+name \+ sigil/i,
   );
+  const stock = await page.locator(".stock").innerText();
+  assert.match(stock, /[\d,]+ available/);
   await page.screenshot({ path: captures + "desktop.png", fullPage: true });
   assert.equal(await page.locator(".checkout").count(), 0);
   await page
@@ -83,6 +85,8 @@ try {
   await page.waitForFunction(
     () => document.querySelectorAll(".planet").length === 2,
   );
+  assert.equal(await page.locator(".stock").innerText(), stock);
+  assert.match(await page.locator(".pagination").innerText(), /1–2 \/ 2/);
   await page
     .locator(".checkout")
     .getByRole("button", { name: "Close", exact: true })
@@ -215,6 +219,8 @@ try {
   assert.equal(await page.locator(".checkout").count(), 0);
   await page.getByLabel("Search planet names").fill("zzzzzz");
   await page.getByText("No matching planets. Try another search.").waitFor();
+  assert.equal(await page.locator(".stock").innerText(), stock);
+  assert.match(await page.locator(".pagination").innerText(), /0–0 \/ 0/);
   // Simulated wallet sign-in: no payment or order reaches the server.
   const wallet = "0x1111111111111111111111111111111111111111";
   await page.route("**/api/config", async (route) => {
